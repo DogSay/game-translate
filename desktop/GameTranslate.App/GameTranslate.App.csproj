@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>GameTranslate</AssemblyName>
+    <RootNamespace>GameTranslate.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GameTranslate.Core\GameTranslate.Core.csproj" />
+    <EmbeddedResource Include="..\..\.tools\UEExtractor-1.0.8.4\UEExtractor.dll" LogicalName="Tools.UEExtractor.dll" />
+    <EmbeddedResource Include="..\..\.tools\repak-0.2.3\repak.exe" LogicalName="Tools.repak.exe" />
+    <EmbeddedResource Include="..\..\.tools\repak-0.2.3\oo2core_9_win64.dll" LogicalName="Tools.oo2core_9_win64.dll" />
+    <EmbeddedResource Include="..\..\.tools\repak-0.2.3\LICENSE-APACHE" LogicalName="Tools.repak-LICENSE-APACHE.txt" />
+    <EmbeddedResource Include="..\..\.tools\repak-0.2.3\LICENSE-MIT" LogicalName="Tools.repak-LICENSE-MIT.txt" />
+    <EmbeddedResource Include="..\..\.tools\retoc-0.1.5\retoc.exe" LogicalName="Tools.retoc.exe" />
+    <EmbeddedResource Include="..\..\.tools\retoc-0.1.5\LICENSE" LogicalName="Tools.retoc-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\oodle-data-shared.dll" LogicalName="Tools.oodle-data-shared.dll" />
+    <EmbeddedResource Include="..\..\zlib-ng2.dll" LogicalName="Tools.zlib-ng2.dll" />
+  </ItemGroup>
+</Project>

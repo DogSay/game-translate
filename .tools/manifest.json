@@ -1,0 +1,20 @@
+{
+  "UEExtractor": {
+    "version": "1.0.8.4",
+    "path": ".tools/UEExtractor-1.0.8.4/UEExtractor.exe",
+    "url": "https://github.com/SolicenTEAM/UEExtractor/releases/download/v.1.0.8.4/UEExtractor.zip",
+    "sha256": "802376050420dfdb361ebcd736bb6757856cf36c60172da307137488869c4e86"
+  },
+  "retoc": {
+    "version": "0.1.5",
+    "path": ".tools/retoc-0.1.5/retoc.exe",
+    "url": "https://github.com/trumank/retoc/releases/download/v0.1.5/retoc_cli-x86_64-pc-windows-msvc.zip",
+    "sha256": "cc036b06ad3bdcf7003690b00d82719980c374e48a95bf0654f9959148d263aa"
+  },
+  "repak": {
+    "version": "0.2.3",
+    "path": ".tools/repak-0.2.3/repak.exe",
+    "url": "https://github.com/trumank/repak/releases/download/v0.2.3/repak_cli-x86_64-pc-windows-msvc.zip",
+    "sha256": "6720d602144d75df477a99d5bedb6ea780997546afc335901d4937cafeaa73fa"
+  }
+}

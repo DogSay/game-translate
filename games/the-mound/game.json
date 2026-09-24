@@ -1,0 +1,55 @@
+{
+  "id": "the-mound",
+  "title": "The Mound",
+  "gamePath": "C:/Program Files (x86)/Steam/steamapps/common/The Mound",
+  "engine": "unreal",
+  "engineVersion": "GAME_UE5_7",
+  "requiresIoStoreCompanions": true,
+  "sourceCulture": "zh-Hans",
+  "paksRelativePath": "TheMound/Content/Paks",
+  "sourceArchive": "pakchunk0-Windows.pak",
+  "userConfigRelativePath": "TheMound/Saved/Config/Windows/GameUserSettings.ini",
+  "defaultMode": "compat",
+  "modes": {
+    "compat": {
+      "targetCulture": "zh-Hans",
+      "patchName": "pakchunk99-GameTranslate_zhHans_P.pak"
+    }
+  },
+  "pakVersion": "V11",
+  "pakPathHashSeed": "0xD8195615",
+  "localizationTargets": [
+    {
+      "name": "Engine",
+      "virtualPath": "Engine/Content/Localization/Engine/zh-Hans/Engine.locres"
+    },
+    {
+      "name": "OnlineSubsystem",
+      "virtualPath": "Engine/Plugins/Online/OnlineSubsystem/Content/Localization/OnlineSubsystem/zh-Hans/OnlineSubsystem.locres"
+    },
+    {
+      "name": "OnlineSubsystemSteam",
+      "virtualPath": "Engine/Plugins/Online/OnlineSubsystemSteam/Content/Localization/OnlineSubsystemSteam/zh-Hans/OnlineSubsystemSteam.locres"
+    },
+    {
+      "name": "OnlineSubsystemUtils",
+      "virtualPath": "Engine/Plugins/Online/OnlineSubsystemUtils/Content/Localization/OnlineSubsystemUtils/zh-Hans/OnlineSubsystemUtils.locres"
+    },
+    {
+      "name": "Game",
+      "virtualPath": "TheMound/Content/Localization/Game/zh-Hans/Game.locres"
+    },
+    {
+      "name": "Legal",
+      "virtualPath": "TheMound/Content/Localization/Legal/zh-Hans/Legal.locres"
+    },
+    {
+      "name": "MyNacon",
+      "virtualPath": "TheMound/Plugins/Nacon/MyNacon/Content/Localization/MyNacon/zh-Hans/MyNacon.locres"
+    },
+    {
+      "name": "XeSS",
+      "virtualPath": "Engine/Plugins/Marketplace/Intel/XeSS/Content/Localization/XeSS/zh-Hans/XeSS.locres"
+    }
+  ]
+}

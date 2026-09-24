@@ -1,0 +1,26 @@
+{
+  "name": "game-translate",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Reusable Unity and Unreal game localization toolkit",
+  "scripts": {
+    "test": "node --test && dotnet run --project ./desktop/GameTranslate.Tests/GameTranslate.Tests.csproj",
+    "audit:repo": "node ./scripts/audit-repository.mjs",
+    "test:node": "node --test",
+    "test:desktop": "dotnet run --project ./desktop/GameTranslate.Tests/GameTranslate.Tests.csproj",
+    "build:exe": "dotnet build ./desktop/GameTranslate.App/GameTranslate.App.csproj -c Release",
+    "publish:exe": "dotnet publish ./desktop/GameTranslate.App/GameTranslate.App.csproj -c Release -r win-x64 --self-contained true -o ./dist/portable",
+    "doctor": "node ./src/cli.mjs doctor",
+    "scan": "node ./src/cli.mjs scan",
+    "extract": "node ./src/cli.mjs extract",
+    "convert": "node ./src/cli.mjs convert",
+    "build": "node ./src/cli.mjs build",
+    "install-patch": "node ./src/cli.mjs install",
+    "deactivate-patches": "node ./src/cli.mjs deactivate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

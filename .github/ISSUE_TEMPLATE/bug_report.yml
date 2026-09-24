@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible Game Translate failure without uploading game data.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not upload game archives, encryption keys, API keys, saves, or personal configuration files.
+  - type: input
+    id: version
+    attributes:
+      label: Game Translate version or commit
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game, engine, and game build
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized log excerpt
+      description: Remove usernames, local paths, keys, and copyrighted payloads.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data check
+      options:
+        - label: I removed secrets and did not attach copyrighted game files.
+          required: true

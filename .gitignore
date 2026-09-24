@@ -1,0 +1,48 @@
+# Dependencies and generated output
+node_modules/
+dist/
+work/
+tmp/
+desktop/**/bin/
+desktop/**/obj/
+*.log
+
+# Downloaded tool payloads. Only the pinned metadata is source-controlled.
+.tools/*/
+!.tools/manifest.json
+
+# Game-local state, backups, and downloaded translation packages
+.game-translate/
+backups/
+**/*汉化文件*/
+**/*漢化文件*/
+games/**/game.local.json
+
+# Game archives, extracted localization, and third-party runtime binaries
+*.pak
+*.utoc
+*.ucas
+*.locres
+*.uasset
+*.uexp
+*.assets
+*.exe
+*.dll
+*.pdb
+
+# Synthetic fixtures are allowed when they contain no copyrighted game data.
+!test/fixtures/**
+
+# Secrets and machine-local settings
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

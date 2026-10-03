@@ -1,4 +1,6 @@
 using GameTranslate.Core;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -75,6 +77,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("retries a failed tool run exactly once", RetriesToolRunOnce),
     ("native mode targets zh-Hant while compat keeps the source culture", Sync(MapsModeToTargetCulture)),
     ("restore culture prefers the recorded source culture", Sync(RestoreCulturePrefersSource)),
+    ("pinned native runtime accepts a verified existing DLL without network", AcceptsVerifiedNativeRuntime),
+    ("pinned native runtime rejects a modified existing DLL", RejectsModifiedNativeRuntime),
+    ("pinned native runtime replaces only a known legacy DLL after verifying the download", ReplacesKnownLegacyNativeRuntime),
+    ("pinned native runtime keeps a known legacy DLL when download verification fails", KeepsKnownLegacyOnBadDownload),
+    ("pinned native runtime verifies archive and extracted DLL before installation", VerifiesNativeRuntimeDownload),
+    ("repak runtime rejects an unverified existing Oodle DLL", Sync(RejectsUnverifiedRepakRuntime)),
+    ("Unreal workflow rejects an unverified runtime before starting tools", WorkflowRejectsUnverifiedRuntime),
 };
 
 var failures = 0;
@@ -1146,6 +1155,125 @@ static void Throws<T>(Action action) where T : Exception
     throw new Exception($"Expected {typeof(T).Name}");
 }
 
+static async Task AcceptsVerifiedNativeRuntime()
+{
+    using var fixture = new TemporaryDirectory();
+    var dll = Path.Combine(fixture.Path, "sample.dll");
+    await File.WriteAllBytesAsync(dll, [1, 2, 3]);
+    var spec = new PinnedZipAsset("sample.dll", "bin/sample.dll", new Uri("https://example.test/native.zip"),
+        "unused-for-existing-file", Convert.ToHexString(SHA256.HashData([1, 2, 3])));
+    using var client = new HttpClient(new StubHttpHandler(_ => throw new Exception("Network must not be used")));
+    await PinnedZipRuntime.EnsureAsync(fixture.Path, spec, client, CancellationToken.None);
+    SequenceEqual(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(dll));
+}
+
+static async Task RejectsModifiedNativeRuntime()
+{
+    using var fixture = new TemporaryDirectory();
+    var dll = Path.Combine(fixture.Path, "sample.dll");
+    await File.WriteAllBytesAsync(dll, [4, 5, 6]);
+    var spec = new PinnedZipAsset("sample.dll", "bin/sample.dll", new Uri("https://example.test/native.zip"),
+        "unused-for-existing-file", Convert.ToHexString(SHA256.HashData([1, 2, 3])));
+    using var client = new HttpClient(new StubHttpHandler(_ => throw new Exception("Network must not be used")));
+    await ThrowsAsync<InvalidDataException>(() => PinnedZipRuntime.EnsureAsync(fixture.Path, spec, client, CancellationToken.None));
+    SequenceEqual(new byte[] { 4, 5, 6 }, await File.ReadAllBytesAsync(dll));
+}
+
+static async Task ReplacesKnownLegacyNativeRuntime()
+{
+    using var fixture = new TemporaryDirectory();
+    var dll = Path.Combine(fixture.Path, "sample.dll");
+    var legacyBytes = new byte[] { 4, 5, 6 };
+    var currentBytes = new byte[] { 7, 8, 9 };
+    await File.WriteAllBytesAsync(dll, legacyBytes);
+    byte[] archiveBytes;
+    using (var buffer = new MemoryStream())
+    {
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = archive.CreateEntry("bin/sample.dll").Open())
+            entry.Write(currentBytes);
+        archiveBytes = buffer.ToArray();
+    }
+    var spec = new PinnedZipAsset("sample.dll", "bin/sample.dll", new Uri("https://example.test/native.zip"),
+        Convert.ToHexString(SHA256.HashData(archiveBytes)), Convert.ToHexString(SHA256.HashData(currentBytes)),
+        LegacyFileSha256: Convert.ToHexString(SHA256.HashData(legacyBytes)));
+    using var client = new HttpClient(new StubHttpHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+    { Content = new ByteArrayContent(archiveBytes) }));
+    await PinnedZipRuntime.EnsureAsync(fixture.Path, spec, client, CancellationToken.None);
+    SequenceEqual(currentBytes, await File.ReadAllBytesAsync(dll));
+    Equal(1, Directory.GetFiles(fixture.Path).Length);
+}
+
+static async Task KeepsKnownLegacyOnBadDownload()
+{
+    using var fixture = new TemporaryDirectory();
+    var dll = Path.Combine(fixture.Path, "sample.dll");
+    var legacyBytes = new byte[] { 4, 5, 6 };
+    await File.WriteAllBytesAsync(dll, legacyBytes);
+    var spec = new PinnedZipAsset("sample.dll", "bin/sample.dll", new Uri("https://example.test/native.zip"),
+        "NOT_THE_DOWNLOADED_ARCHIVE", Convert.ToHexString(SHA256.HashData([7, 8, 9])),
+        LegacyFileSha256: Convert.ToHexString(SHA256.HashData(legacyBytes)));
+    using var client = new HttpClient(new StubHttpHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+    { Content = new ByteArrayContent([1, 2, 3]) }));
+    await ThrowsAsync<InvalidDataException>(() => PinnedZipRuntime.EnsureAsync(fixture.Path, spec, client, CancellationToken.None));
+    SequenceEqual(legacyBytes, await File.ReadAllBytesAsync(dll));
+    Equal(1, Directory.GetFiles(fixture.Path).Length);
+}
+
+static async Task VerifiesNativeRuntimeDownload()
+{
+    using var fixture = new TemporaryDirectory();
+    var dllBytes = new byte[] { 7, 8, 9 };
+    byte[] archiveBytes;
+    using (var buffer = new MemoryStream())
+    {
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = archive.CreateEntry("bin/sample.dll").Open())
+            entry.Write(dllBytes);
+        archiveBytes = buffer.ToArray();
+    }
+    var spec = new PinnedZipAsset("sample.dll", "bin/sample.dll", new Uri("https://example.test/native.zip"),
+        Convert.ToHexString(SHA256.HashData(archiveBytes)), Convert.ToHexString(SHA256.HashData(dllBytes)));
+    using var client = new HttpClient(new StubHttpHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+    { Content = new ByteArrayContent(archiveBytes) }));
+    await ThrowsAsync<InvalidDataException>(() => PinnedZipRuntime.EnsureAsync(fixture.Path,
+        spec with { ArchiveSha256 = "BAD" }, client, CancellationToken.None));
+    False(File.Exists(Path.Combine(fixture.Path, "sample.dll")));
+    await ThrowsAsync<InvalidDataException>(() => PinnedZipRuntime.EnsureAsync(fixture.Path,
+        spec with { FileSha256 = "BAD" }, client, CancellationToken.None));
+    False(File.Exists(Path.Combine(fixture.Path, "sample.dll")));
+    await PinnedZipRuntime.EnsureAsync(fixture.Path, spec, client, CancellationToken.None);
+    SequenceEqual(dllBytes, await File.ReadAllBytesAsync(Path.Combine(fixture.Path, "sample.dll")));
+}
+
+static void RejectsUnverifiedRepakRuntime()
+{
+    using var fixture = new TemporaryDirectory();
+    File.WriteAllBytes(Path.Combine(fixture.Path, "oo2core_9_win64.dll"), [1, 2, 3]);
+    Throws<InvalidDataException>(() => NativeRuntimePreflight.VerifyExistingRepakRuntime(fixture.Path));
+}
+
+static async Task WorkflowRejectsUnverifiedRuntime()
+{
+    using var fixture = new TemporaryDirectory();
+    var toolsDirectory = Path.Combine(fixture.Path, "tools");
+    Directory.CreateDirectory(toolsDirectory);
+    await File.WriteAllBytesAsync(Path.Combine(toolsDirectory, "oo2core_9_win64.dll"), [1, 2, 3]);
+    var paths = new PortableToolPaths(Path.Combine(toolsDirectory, "UEExtractor.exe"), [],
+        Path.Combine(toolsDirectory, "repak.exe"), Path.Combine(toolsDirectory, "retoc.exe"));
+    var game = new GameDetection(fixture.Path, EngineKind.Unreal, PackagingKind.Pak, "Example",
+        Path.Combine(fixture.Path, "Example", "Content", "Paks"), []);
+    var workflow = new UnrealTranslationWorkflow(new NeverProcessRunner(), new ThrowingTranslationApi(), paths, _ => { });
+    await ThrowsAsync<InvalidDataException>(() => workflow.BuildAndInstallAsync(game, TranslationMode.Compatibility, CancellationToken.None));
+}
+
+static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception
+{
+    try { await action(); }
+    catch (T) { return; }
+    throw new Exception($"Expected {typeof(T).Name}");
+}
+
 sealed class TemporaryDirectory : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"game-translate-tests-{Guid.NewGuid():N}");
@@ -1170,6 +1298,12 @@ sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respo
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         Task.FromResult(respond(request));
+}
+
+sealed class NeverProcessRunner : IProcessRunner
+{
+    public Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken) =>
+        throw new Exception("No external process may start before native runtime verification.");
 }
 
 sealed class ThrowingTranslationApi : ITranslationApi

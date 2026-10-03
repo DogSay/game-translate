@@ -9,8 +9,9 @@ internal static class ToolInstaller
 {
     private static readonly string[] Resources =
     [
-        "UEExtractor.dll", "repak.exe", "oo2core_9_win64.dll", "repak-LICENSE-APACHE.txt",
-        "repak-LICENSE-MIT.txt", "retoc.exe", "retoc-LICENSE.txt", "oodle-data-shared.dll", "zlib-ng2.dll",
+        "UEExtractor.dll", "UEExtractor.exe", "UEExtractor.runtimeconfig.json", "UEExtractor-LICENSE.txt",
+        "CUE4Parse-LICENSE.txt", "repak.exe", "repak-LICENSE-APACHE.txt", "repak-LICENSE-MIT.txt",
+        "retoc.exe", "retoc-LICENSE.txt", "zlib-ng2.dll", "zlib-ng-LICENSE.txt",
     ];
 
     public static PortableToolPaths Ensure(string gameRoot)
@@ -19,8 +20,7 @@ internal static class ToolInstaller
         Directory.CreateDirectory(directory);
         var assembly = typeof(ToolInstaller).Assembly;
         foreach (var name in Resources) ExtractVerified(assembly, $"Tools.{name}", Path.Combine(directory, name));
-        var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("無法定位 GameTranslate.exe。");
-        return new(processPath, ["--ueextractor-host", Path.Combine(directory, "UEExtractor.dll")],
+        return new(Path.Combine(directory, "UEExtractor.exe"), Array.Empty<string>(),
             Path.Combine(directory, "repak.exe"), Path.Combine(directory, "retoc.exe"));
     }
 

@@ -56,14 +56,21 @@ internal static class Program
         try
         {
             var paths = ToolInstaller.Ensure(root);
+            NativeRuntimePreflight.VerifyExistingRepakRuntime(Path.GetDirectoryName(paths.Repak)!);
+            using var nativeRuntimeClient = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+            await PinnedZipRuntime.EnsureAsync(paths.UeExtractorWorkingDirectory(), NativeRuntimePreflight.UeExtractorOodle,
+                nativeRuntimeClient, CancellationToken.None);
             var runner = new ProcessRunner();
-            var ue = await runner.RunAsync(paths.UeExtractorHost, [.. paths.UeExtractorPrefix, "--help"], Path.GetDirectoryName(paths.UeExtractorHost), CancellationToken.None);
+            // UEExtractor 1.0.8.4 has no documented --help switch; with no game input it waits interactively.
+            // ToolInstaller has already checked the extracted apphost and assembly against embedded bytes.
+            var ueInstalled = File.Exists(paths.UeExtractorHost);
             var repak = await runner.RunAsync(paths.Repak, ["--version"], Path.GetDirectoryName(paths.Repak), CancellationToken.None);
             var retoc = await runner.RunAsync(paths.Retoc, ["--version"], Path.GetDirectoryName(paths.Retoc), CancellationToken.None);
             Console.WriteLine(JsonSerializer.Serialize(new {
-                ue = new { ue.ExitCode, ue.Output }, repak = new { repak.ExitCode, repak.Output }, retoc = new { retoc.ExitCode, retoc.Output },
+                ue = new { installed = ueInstalled, launchTested = false, note = "Use a real game extraction to test UEExtractor startup." },
+                repak = new { repak.ExitCode, repak.Output }, retoc = new { retoc.ExitCode, retoc.Output },
             }, new JsonSerializerOptions { WriteIndented = true }));
-            return ue.Success && repak.Success && retoc.Success ? 0 : 1;
+            return ueInstalled && repak.Success && retoc.Success ? 0 : 1;
         }
         catch (Exception error)
         {

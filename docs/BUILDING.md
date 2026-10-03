@@ -2,9 +2,9 @@
 
 The public checkout is immediately testable, but the portable EXE is **not**
 currently reproducible from source alone. It embeds third-party executables and
-native libraries that are not committed to Git. In particular, Oodle binaries
-are proprietary. A successful local build is not permission to redistribute
-its output. See [third-party notices](../THIRD_PARTY_NOTICES.md) and the
+a native zlib library that are not committed to Git. Oodle binaries are not
+embedded. A successful local build is not permission to redistribute its
+output. See [third-party notices](../THIRD_PARTY_NOTICES.md) and the
 [release gate](RELEASING.md).
 
 ## Source-only verification
@@ -34,15 +34,15 @@ contents. These files must exist before `npm run publish:exe`:
 
 | Local input | Source |
 | --- | --- |
-| `.tools/UEExtractor-1.0.8.4/UEExtractor.dll` | Pinned UEExtractor archive |
+| `.tools/UEExtractor-1.0.8.4/UEExtractor.exe`, `UEExtractor.dll`, and `UEExtractor.runtimeconfig.json` | Pinned UEExtractor archive |
 | `.tools/repak-0.2.3/repak.exe` and `LICENSE-APACHE`, `LICENSE-MIT` | Pinned repak archive |
-| `.tools/repak-0.2.3/oo2core_9_win64.dll` | A legally obtained Oodle copy compatible with this repak build |
 | `.tools/retoc-0.1.5/retoc.exe` and `LICENSE` | Pinned retoc archive |
-| `oodle-data-shared.dll` | A compatible, legally obtained local runtime; verify its provenance before use |
-| `zlib-ng2.dll` | Zlib-ng.NET native runtime; the current local build uses version 2.3.2 |
+| `zlib-ng2.dll` | `bin/zlib-ng2.dll` from the pinned zlib-ng 2.3.2 archive |
 
-The archive hashes in the manifest do **not** verify a separately supplied
-Oodle or zlib DLL. Do not download native DLLs from an untrusted DLL mirror.
+For zlib-ng, verify both the archive `sha256` and the extracted `fileSha256`
+from the manifest. The corresponding license texts are tracked under
+`licenses/` and embedded in the portable EXE. Do not download native DLLs from
+an untrusted DLL mirror.
 The project does not yet provide a one-command, license-cleared dependency
 bootstrap. Until that exists, maintainers must inspect the exact local inputs
 and license texts themselves.
@@ -60,9 +60,9 @@ game files, translation memory, or generated patches.
 
 ## What still blocks a public EXE
 
-1. Remove the unlicensed Oodle payload from the EXE, or obtain explicit
-   redistribution permission.
-2. Pin and verify every distributable build input from a clean checkout,
-   including the native zlib runtime and required license texts.
+1. Independently verify the no-Oodle EXE and review the tools' first-run
+   Oodle download behavior and terms before public distribution.
+2. Reproduce the pinned distributable build inputs from a clean checkout and
+   review the bundled license texts against those exact binaries.
 3. Re-run startup, archive, rollback, and fresh in-game checks on the resulting
    binary. A green source CI run is not a game-verification result.

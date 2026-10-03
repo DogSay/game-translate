@@ -4,8 +4,8 @@ This is a status guide, not a promise that an untested game will work.
 
 ## Next release gates
 
-1. **License-cleared portable build.** Stop embedding unlicensed Oodle, pin
-   remaining distributable dependencies, and build/test from a clean checkout.
+1. **License-cleared portable build.** Verify the no-Oodle build and first-run
+   download terms, reproduce pinned dependencies, and build/test from a clean checkout.
    Publish an EXE only after the [release checklist](RELEASING.md) passes.
 2. **Fresh Unreal game check.** Re-check the current The Mound pipeline in-game,
    including translated UI, fonts, clipping, and the disable/restore path. Keep

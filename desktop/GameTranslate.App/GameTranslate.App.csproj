@@ -18,13 +18,16 @@
   <ItemGroup>
     <ProjectReference Include="..\GameTranslate.Core\GameTranslate.Core.csproj" />
     <EmbeddedResource Include="..\..\.tools\UEExtractor-1.0.8.4\UEExtractor.dll" LogicalName="Tools.UEExtractor.dll" />
+    <EmbeddedResource Include="..\..\.tools\UEExtractor-1.0.8.4\UEExtractor.exe" LogicalName="Tools.UEExtractor.exe" />
+    <EmbeddedResource Include="..\..\.tools\UEExtractor-1.0.8.4\UEExtractor.runtimeconfig.json" LogicalName="Tools.UEExtractor.runtimeconfig.json" />
+    <EmbeddedResource Include="..\..\licenses\UEExtractor-MIT.txt" LogicalName="Tools.UEExtractor-LICENSE.txt" />
+    <EmbeddedResource Include="..\..\licenses\CUE4Parse-APACHE.txt" LogicalName="Tools.CUE4Parse-LICENSE.txt" />
     <EmbeddedResource Include="..\..\.tools\repak-0.2.3\repak.exe" LogicalName="Tools.repak.exe" />
-    <EmbeddedResource Include="..\..\.tools\repak-0.2.3\oo2core_9_win64.dll" LogicalName="Tools.oo2core_9_win64.dll" />
     <EmbeddedResource Include="..\..\.tools\repak-0.2.3\LICENSE-APACHE" LogicalName="Tools.repak-LICENSE-APACHE.txt" />
     <EmbeddedResource Include="..\..\.tools\repak-0.2.3\LICENSE-MIT" LogicalName="Tools.repak-LICENSE-MIT.txt" />
     <EmbeddedResource Include="..\..\.tools\retoc-0.1.5\retoc.exe" LogicalName="Tools.retoc.exe" />
     <EmbeddedResource Include="..\..\.tools\retoc-0.1.5\LICENSE" LogicalName="Tools.retoc-LICENSE.txt" />
-    <EmbeddedResource Include="..\..\oodle-data-shared.dll" LogicalName="Tools.oodle-data-shared.dll" />
     <EmbeddedResource Include="..\..\zlib-ng2.dll" LogicalName="Tools.zlib-ng2.dll" />
+    <EmbeddedResource Include="..\..\licenses\zlib-ng-LICENSE.txt" LogicalName="Tools.zlib-ng-LICENSE.txt" />
   </ItemGroup>
 </Project>

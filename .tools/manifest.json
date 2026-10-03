@@ -16,5 +16,13 @@
     "path": ".tools/repak-0.2.3/repak.exe",
     "url": "https://github.com/trumank/repak/releases/download/v0.2.3/repak_cli-x86_64-pc-windows-msvc.zip",
     "sha256": "6720d602144d75df477a99d5bedb6ea780997546afc335901d4937cafeaa73fa"
+  },
+  "zlibNg": {
+    "version": "2.3.2",
+    "path": "zlib-ng2.dll",
+    "url": "https://github.com/zlib-ng/zlib-ng/releases/download/2.3.2/zlib-ng-win-x86-64.zip",
+    "sha256": "8fd35b640032217aef52017c0683963ba51341acdb2f7b24e6c7a7d6ec893412",
+    "archiveEntry": "bin/zlib-ng2.dll",
+    "fileSha256": "454be2f3d10f804ace577198401431db5e95d0286b59589bc28a40085388e7c2"
   }
 }

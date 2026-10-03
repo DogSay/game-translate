@@ -14,7 +14,7 @@ public static class TranslationModes
 public sealed record PortableToolPaths(string UeExtractorHost, IReadOnlyList<string> UeExtractorPrefix, string Repak, string Retoc)
 {
     // UEExtractor (CUE4Parse) drops its native libraries into the process working directory,
-    // so hosted runs must start in the bundled tools directory, not beside GameTranslate.exe.
+    // so runs must start in the bundled tools directory, not beside GameTranslate.exe.
     public string UeExtractorWorkingDirectory()
     {
         var assemblyPath = UeExtractorPrefix.LastOrDefault(value => value.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
@@ -26,6 +26,7 @@ public sealed record WorkflowResult(ArtifactRecord Artifact, InstallResult Insta
 
 public sealed class UnrealTranslationWorkflow
 {
+    private static readonly HttpClient NativeRuntimeClient = new() { Timeout = TimeSpan.FromMinutes(2) };
     private readonly IProcessRunner _processes;
     private readonly ITranslationApi _translationApi;
     private readonly PortableToolPaths _tools;
@@ -46,6 +47,12 @@ public sealed class UnrealTranslationWorkflow
     {
         if (game.Engine != EngineKind.Unreal || game.PaksDirectory is null)
             throw new NotSupportedException("目前只有 Unreal 外加 patch 流程可安全執行。");
+
+        var toolsDirectory = _tools.UeExtractorWorkingDirectory();
+        NativeRuntimePreflight.VerifyExistingRepakRuntime(Path.GetDirectoryName(_tools.Repak)!);
+        await PinnedZipRuntime.EnsureAsync(toolsDirectory, NativeRuntimePreflight.UeExtractorOodle,
+            NativeRuntimeClient, cancellationToken);
+        Log("Native archive runtimes verified before starting Unreal tools.");
 
         var portableRoot = Path.Combine(game.GameRoot, ".game-translate");
         var runId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);

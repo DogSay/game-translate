@@ -3,19 +3,55 @@
 [![CI](https://github.com/DogSay/game-translate/actions/workflows/ci.yml/badge.svg)](https://github.com/DogSay/game-translate/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Build reversible Traditional Chinese localization patches for supported games.
-Game Translate keeps translation memory, game adapters, validation, and a
-portable Windows UI in one open-source project. It does **not** rewrite a game's
-original archives.
+Game Translate 是一款 Windows 遊戲簡繁轉換工具，將遊戲**已存在的簡體中文譯文**轉換為繁體中文，並以可停用的外置修補檔安裝。工具不會改寫遊戲原有的封裝檔案。
 
-集中管理 Unity／Unreal 遊戲翻譯、翻譯記憶、遊戲 adapter 同外置 patch。所有生成物都放在本 project；原裝遊戲 archive（`.pak`、`.utoc`、`.ucas`、Unity asset bundle）不會被改寫。
+Game Translate converts existing Simplified Chinese game text into Traditional Chinese and creates reversible patches for compatible Unreal Engine games. It does not translate from English or other languages. Unity conversion is not supported yet.
 
-The UI is Cantonese-first. The project currently builds Unreal locres patches;
-Unity games can be detected, but **Unity translation is not supported yet**.
+**重要限制：**本工具不是自動翻譯器。若遊戲沒有現成的簡體中文內容，工具不能將英文、日文或其他語言自行翻譯成繁體中文，也不能補寫原本不存在的譯文。
 
-## Try the public source
+> **目前僅公開原始碼，尚未提供可下載的 Windows 執行檔。** 開發者可參閱[從原始碼建置](docs/BUILDING.md)；公開發佈進度見[開發路線圖](docs/ROADMAP.md)。
 
-On Windows, install Node.js 20+ and the .NET 10 SDK, then run:
+## 主要功能
+
+- 辨識遊戲的 Unreal Engine 或 Unity 封裝結構，並提示已知的支援限制。
+- 對符合條件的 Unreal Engine 遊戲，讀取現有的簡體中文在地化文字，透過[繁化姬](https://zhconvert.org/)轉換為繁體中文，建立獨立修補檔。
+- 在轉換過程中保留文字標記、變數佔位符及在地化資料結構，並於安裝前驗證修補檔。
+- 顯示偵測結果、API 連線狀態及操作紀錄；可停用、重新啟用或移除由 Game Translate 建立的修補檔。
+
+圖片文字、字型問題，以及未使用受支援在地化格式的內容，可能需要額外處理。
+
+## 支援狀態
+
+| 遊戲或格式 | 目前狀態 |
+| --- | --- |
+| Unreal Engine 的 `.locres` 在地化內容 | 已實作外置修補檔流程；仍須確認個別遊戲的封裝格式與載入方式。 |
+| 《The Mound: Omen of Cthulhu》 | 兼容模式的技術配方曾通過遊戲內驗證；目前程式版本仍待重新進行遊戲內檢查。[查看遊戲說明](games/the-mound/README.md)。 |
+| Unity 遊戲 | 可辨識部分遊戲結構；尚未支援簡繁轉換或安裝修補檔。 |
+
+偵測到 Unreal Engine 或 Unity，並不代表該遊戲必定可以轉換。加密封裝、無法讀取的原始資源，或不同的在地化格式，均可能需要專用的遊戲適配器。
+
+## 使用方式
+
+目前沒有公開發佈的執行檔。以下說明適用於已依[建置指引](docs/BUILDING.md)取得本機版本的使用者：
+
+1. 將 `GameTranslate.exe` 放在遊戲安裝資料夾，開啟程式並確認偵測結果。
+2. 測試繁化姬 API 連線，檢視偵測結果及可選的簡繁轉換模式。
+3. 選擇簡繁轉換方法並建立修補檔。工具會在安裝前檢查輸出；遇到不支援的格式時，不應繼續安裝。
+4. 進入遊戲確認文字、字型及版面。日後可在工具中停用、重新啟用或移除繁體修補檔。
+
+對於沒有獨立繁體中文語系的遊戲，**兼容模式**會使用原本的簡體中文語系位置載入繁體內容。遊戲內語言選單的顯示名稱因遊戲而異；部分遊戲仍須選擇「簡體中文」才能使用修補檔。這不等同於新增原生繁體中文語系。
+
+外置修補檔不會修改原始遊戲封裝；安裝或停用修補檔時，工具可能同步調整玩家的語言設定。遊戲更新後，原有修補檔亦可能需要重新產生。自動驗證無法取代實際的遊戲內檢查。
+
+## 轉換服務與授權
+
+使用繁化姬 API 時，待轉換的文字會傳送至第三方服務。商業使用須依[繁化姬的收費規定](https://zhconvert.org/)付費；使用前請確認其服務條款。
+
+本專案自行開發的原始碼採用 [MIT 授權](LICENSE)。此授權不涵蓋遊戲內容、第三方工具、翻譯、字型或網絡服務；相關說明請參閱[第三方聲明](THIRD_PARTY_NOTICES.md)。本專案與相關遊戲開發商及發行商並無隸屬關係。
+
+## 參與開發
+
+在 Windows 上安裝 Node.js 20 以上版本及 .NET 10 SDK 後，可以直接執行不依賴商業遊戲檔案的測試：
 
 ```powershell
 git clone https://github.com/DogSay/game-translate.git
@@ -24,149 +60,4 @@ npm test
 npm run audit:repo
 ```
 
-These tests use synthetic data; no game, API key, or proprietary tool is needed.
-To build the Windows EXE locally, see [Build from source](docs/BUILDING.md).
-There is **no public binary release** while the Oodle redistribution boundary
-remains unresolved. The current GitHub Actions job tests source code and does
-not build or distribute the EXE.
-
-For a supported Unreal game, the workflow is: detect the archive layout →
-extract localization → convert visible text → preserve locres keys and hash
-tables → build and verify an external patch → install or disable that patch.
-See [the current support matrix](#project-status) and [roadmap](docs/ROADMAP.md)
-before trying another game.
-
-## Project status
-
-| Area | Status |
-| --- | --- |
-| Unreal locres v1-v3 surgery | Implemented and regression-tested |
-| Unreal Pak + IoStore companion workflow | Implemented and regression-tested |
-| The Mound compatibility adapter | Historically verified in-game; current rebuilt artifact still needs a fresh visual check |
-| Unity packaging detection | Implemented |
-| Unity translation adapter | Not yet implemented or claimed as supported |
-| Public source repository | Published; generated and copyrighted payloads are excluded |
-| Public portable-binary release | Blocked pending the Oodle redistribution gate documented in `THIRD_PARTY_NOTICES.md` |
-
-**The Mound: Omen of Cthulhu**（Unreal Engine 5.7）嘅 locres 手術 + IoStore 三件套配方曾於 2026-07-18 實機顯示繁體。最新 pipeline 會處理 8 個 runtime target（包括 `Engine.locres`），並把 compat 語言選項由「簡體中文」改顯示為「繁體中文」；實際 culture slot 仍然係遊戲支援嘅 `zh-Hans`。目前產品化後 payload 已同最新 Claude 修正版逐 byte 對齊，但新 build 仍要再做一次 fresh in-game check 先可以視為端到端驗證。Unity 暫時只有封裝偵測。
-
-## 可攜式 EXE
-
-本機執行 `npm run publish:exe` 後會建立
-`dist/portable/GameTranslate.exe`。佢係單一檔案 Windows x64 桌面工具，使用者不需要另外安裝 Node 或 .NET。將 EXE 複製到遊戲根目錄後執行，程式會以所在資料夾作預設遊戲路徑。
-
-`dist/` 只係本機生成物，唔會提交到 Git。公開 binary 前必須完成
-[release checklist](docs/RELEASING.md)，尤其唔可以重新發布未獲授權嘅
-Oodle runtime。
-
-介面提供：
-
-- 自動辨識深層 Unreal `Content/Paks`、IoStore／Pak、Unity Player／Data layout；
-- Unreal 兼容模式（繁體覆蓋 `zh-Hans`）；未經實機驗證的 native culture 會隱藏；
-- 可攜版會以可回復交易同步更新 `GameUserSettings.ini` 的 `Language`／`Locale`；
-- 繁化姬 API 連接測試與 protected-token 批次轉換；
-- 每個成功 batch 立即以 atomic JSON 寫入 `.game-translate/translation-memory/`，失敗 batch 不會快取；
-- detect、進度、warning、exception 與完整 log；
-- 偵測 Game Translate 現行或舊版 patch，安全改名為 `.disabled`；
-- 內置並自動解壓 UEExtractor、repak、retoc，工具檔會逐一做 SHA-256 比對；
-- locres version/header/hash-table byte preservation、pak metadata、精確虛擬路徑、pack/unpack hash、IoStore 三件套 SHA-256，以及 installed pak metadata／path 重讀驗證。
-
-所有暫存、工具、輸出與 log 都放在遊戲根目錄的 `.game-translate/`。程式不會修改原裝 `.pak`、`.utoc`、`.ucas` 或 Unity asset bundle；其他作者的 `_P.pak` 只會顯示，還原功能不會處理。
-
-Unity 目前會準確顯示「已偵測但 adapter 未完成」，不會提供未驗證的翻譯按鈕。純 IoStore 而沒有可讀 base `.pak` metadata、加密 archive 或非 locres 遊戲會顯示明確錯誤及 log，需再新增 adapter。
-
-建立 EXE：
-
-```powershell
-npm run publish:exe
-```
-
-Clone 後可以先跑純 source 測試；測試唔需要安裝任何商業遊戲：
-
-```powershell
-npm test
-npm run audit:repo
-```
-
-建立 EXE 另外需要 `.tools/manifest.json` 所列嘅 pinned tools 同本機 native
-dependencies；[Build from source](docs/BUILDING.md) 列明每項輸入同驗證方法。
-下載返嚟嘅工具永遠留喺被忽略嘅 `.tools/`，唔屬於 source repository。
-
-## 基本指令
-
-CLI 使用前先建立本機路徑設定；`game.local.json` 會被 Git 忽略：
-
-```powershell
-Copy-Item games/the-mound/game.local.example.json games/the-mound/game.local.json
-# 編輯 game.local.json，填入你自己嘅遊戲安裝位置
-```
-
-```powershell
-npm test
-npm run doctor -- the-mound
-npm run scan -- the-mound
-npm run extract -- the-mound
-npm run convert -- the-mound
-```
-
-The Mound 目前只提供 compat；以下新 pipeline 產物安裝後仍需重新實機確認：
-
-```powershell
-# 兼容模式：繁中內容覆蓋遊戲的 zh-Hans 槽位
-npm run build -- the-mound compat
-npm run install-patch -- the-mound compat
-
-# 停用所有外置翻譯 patch，語系還原為 zh-Hans
-npm run deactivate-patches -- the-mound
-```
-
-`install-patch` 會：
-
-- 對 IoStore 遊戲以同名 `_P.pak/.utoc/.ucas` 三件套安裝；
-- 備份將被覆蓋的 patch 與 `GameUserSettings.ini`；
-- 只更新 `[Internationalization]` 的 `Language`／`Locale`。
-
-## Project 結構
-
-- `src/core/`：設定、偵測、protected text、translation memory
-- `src/providers/`：翻譯 provider
-- `src/formats/`：CSV、UEExtractor 正規化
-- `src/adapters/`：Unity／Unreal 封裝行為
-- `src/workflows/`：轉換與模式啟用流程
-- `games/`：逐遊戲 manifest 與已觀察事實
-- `work/`：extract、translation memory、backup、驗證資料
-- `dist/`：按遊戲及模式分開的 installable patch
-- `.tools/manifest.json`：已釘選外部工具與 SHA-256
-- `skills/game-translate/`：Codex reusable workflow；implementation 仍以本 project 為準
-- `desktop/`：可攜 WinForms EXE、共享 core 與無外部套件測試 harness
-
-整體分層、信任邊界同「implemented／artifact-verified／game-verified」定義見
-[Architecture](docs/ARCHITECTURE.md)。發布流程見
-[Release checklist](docs/RELEASING.md)，版本變更見 [CHANGELOG.md](CHANGELOG.md)。
-
-## Open-source safety boundary
-
-以下內容永遠唔會收錄入 Git repository 或 source release：
-
-- 原裝或解包後嘅遊戲檔案；
-- `.pak/.utoc/.ucas/.locres/.uasset/.uexp` payload；
-- 下載返嚟嘅漢化／翻譯包同第三方字型；
-- AES key、API key、玩家設定、log、backup、translation memory；
-- `.tools/` 下載 binary、Oodle DLL、`work/`、`dist/` 同 `tmp/`。
-
-`npm run audit:repo` 會檢查實際準備加入 Git 嘅檔案，避免意外提交以上內容。
-詳細貢獻規則見 [CONTRIBUTING.md](CONTRIBUTING.md)，第三方授權邊界見
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。`package.json` 保留
-`"private": true` 只係防止意外發布到 npm，唔代表 source code 係閉源。
-
-## 繁化姬
-
-本程式使用[繁化姬 API](https://zhconvert.org/) 的 `Taiwan` converter；繁化姬商用必須付費。批次轉換只提交可見中文字串，markup、placeholder、printf token、escape、key、namespace 與 row order 會被保護及驗證。
-
-翻譯只有在整份 CSV 成功後才會發布；每個成功 API batch 會先寫入 translation memory，失敗時不會覆蓋上一份完整輸出。
-
-## License
-
-Game Translate 自有 source code 以 [MIT License](LICENSE) 發布。呢個授權唔涵蓋
-任何遊戲、mod、翻譯、字型、網絡服務或第三方工具。專案同相關遊戲開發商、
-發行商及平台並無隸屬關係。
+歡迎透過 [Issues](https://github.com/DogSay/game-translate/issues) 回報問題，或參閱[貢獻指南](CONTRIBUTING.md)。請勿上傳遊戲原始檔案、未獲授權的翻譯內容、金鑰或個人設定。技術架構與發佈檢查分別記載於[架構文件](docs/ARCHITECTURE.md)及[發佈指引](docs/RELEASING.md)。

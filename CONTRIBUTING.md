@@ -17,7 +17,9 @@ npm run audit:repo
 
 The source tests do not require a commercial game installation. Building the
 portable executable additionally requires the pinned local tools described by
-`.tools/manifest.json`; downloaded binaries remain untracked.
+`.tools/manifest.json`; downloaded binaries remain untracked. Follow
+[Build from source](docs/BUILDING.md) for the exact local inputs and the
+redistribution restriction.
 
 For a checked-in game manifest, copy its `game.local.example.json` to
 `game.local.json` and set your own installation path. The local file is ignored

@@ -7,6 +7,8 @@ semantic versioning once public releases begin.
 
 ### Added
 
+- Public quick start, explicit local-build prerequisites, and a roadmap that
+  separates implemented adapters from release and in-game verification gates.
 - Public repository policy audit and GitHub Actions CI.
 - MIT project license, contribution guide, security policy, code of conduct,
   third-party notices, and release checklist.

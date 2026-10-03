@@ -1,11 +1,40 @@
 # Game Translate
 
+[![CI](https://github.com/DogSay/game-translate/actions/workflows/ci.yml/badge.svg)](https://github.com/DogSay/game-translate/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Build reversible Traditional Chinese localization patches for supported games.
+Game Translate keeps translation memory, game adapters, validation, and a
+portable Windows UI in one open-source project. It does **not** rewrite a game's
+original archives.
+
 集中管理 Unity／Unreal 遊戲翻譯、翻譯記憶、遊戲 adapter 同外置 patch。所有生成物都放在本 project；原裝遊戲 archive（`.pak`、`.utoc`、`.ucas`、Unity asset bundle）不會被改寫。
 
-Game Translate is an open-source Windows toolkit for building reversible,
-game-specific localization patches without rewriting original Unity or Unreal
-archives. The UI is Cantonese-first; source code, safety boundaries, and
-contribution guidance are maintained for an international developer audience.
+The UI is Cantonese-first. The project currently builds Unreal locres patches;
+Unity games can be detected, but **Unity translation is not supported yet**.
+
+## Try the public source
+
+On Windows, install Node.js 20+ and the .NET 10 SDK, then run:
+
+```powershell
+git clone https://github.com/DogSay/game-translate.git
+cd game-translate
+npm test
+npm run audit:repo
+```
+
+These tests use synthetic data; no game, API key, or proprietary tool is needed.
+To build the Windows EXE locally, see [Build from source](docs/BUILDING.md).
+There is **no public binary release** while the Oodle redistribution boundary
+remains unresolved. The current GitHub Actions job tests source code and does
+not build or distribute the EXE.
+
+For a supported Unreal game, the workflow is: detect the archive layout →
+extract localization → convert visible text → preserve locres keys and hash
+tables → build and verify an external patch → install or disable that patch.
+See [the current support matrix](#project-status) and [roadmap](docs/ROADMAP.md)
+before trying another game.
 
 ## Project status
 
@@ -16,7 +45,7 @@ contribution guidance are maintained for an international developer audience.
 | The Mound compatibility adapter | Historically verified in-game; current rebuilt artifact still needs a fresh visual check |
 | Unity packaging detection | Implemented |
 | Unity translation adapter | Not yet implemented or claimed as supported |
-| Public source release | Ready for review; generated and copyrighted payloads are excluded |
+| Public source repository | Published; generated and copyrighted payloads are excluded |
 | Public portable-binary release | Blocked pending the Oodle redistribution gate documented in `THIRD_PARTY_NOTICES.md` |
 
 **The Mound: Omen of Cthulhu**（Unreal Engine 5.7）嘅 locres 手術 + IoStore 三件套配方曾於 2026-07-18 實機顯示繁體。最新 pipeline 會處理 8 個 runtime target（包括 `Engine.locres`），並把 compat 語言選項由「簡體中文」改顯示為「繁體中文」；實際 culture slot 仍然係遊戲支援嘅 `zh-Hans`。目前產品化後 payload 已同最新 Claude 修正版逐 byte 對齊，但新 build 仍要再做一次 fresh in-game check 先可以視為端到端驗證。Unity 暫時只有封裝偵測。
@@ -60,8 +89,8 @@ npm run audit:repo
 ```
 
 建立 EXE 另外需要 `.tools/manifest.json` 所列嘅 pinned tools 同本機 native
-dependencies。下載返嚟嘅工具永遠留喺被忽略嘅 `.tools/`，唔屬於 source
-repository。
+dependencies；[Build from source](docs/BUILDING.md) 列明每項輸入同驗證方法。
+下載返嚟嘅工具永遠留喺被忽略嘅 `.tools/`，唔屬於 source repository。
 
 ## 基本指令
 

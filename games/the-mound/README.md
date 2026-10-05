@@ -15,7 +15,7 @@
 - Patch：`pakchunk99-GameTranslate_zhHans_P.pak` + 同名 `.utoc/.ucas`
 - 用途：最高兼容性；patch 仍覆蓋遊戲嘅 `zh-Hans` slot，但語言選項字串會顯示「繁體中文」，遊戲內容亦顯示繁中。
 
-`native` 已停用：遊戲沒有可用 `zh-Hant` culture／語言選項，而且會把設定改回 `zh-Hans`。UI 不再顯示此模式。
+此遊戲的 manifest 僅支援 `compat`：遊戲沒有可用的 `zh-Hant` culture／語言選項，而且會把設定改回 `zh-Hans`。目前可攜版 UI 仍提供通用的實驗性原生選項；該選項未通過此遊戲的驗證，請使用兼容模式。
 
 ## Runtime localization targets（locres string array）
 

@@ -27,7 +27,7 @@ published in a Game Translate release without separate redistribution rights.
 The local no-Oodle build does not embed these DLLs. At translation time, the
 application obtains a pinned `oodle-data-shared.dll` archive over HTTPS,
 verifies both archive and DLL SHA-256, and installs it under
-`.game-translate/tools/`. One known legacy UEExtractor download is replaced
+`%LOCALAPPDATA%\GameTranslate\shared\tools\<version>\`. One known legacy UEExtractor download is replaced
 only after the new archive and DLL pass verification; other mismatched DLLs
 are rejected.
 For repak's `oo2core_9_win64.dll`, the application checks any pre-existing DLL

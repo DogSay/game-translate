@@ -24,5 +24,6 @@ This is a status guide, not a promise that an untested game will work.
 - Unity packaging detection is implemented; Unity translation is not.
 - No public EXE is available. The source can be tested without game assets,
   while local EXE builds need the inputs described in [Build from source](BUILDING.md).
-- Native `zh-Hant` mode is not offered for The Mound because its runtime and
-  language selector do not support it. Compatibility mode overrides `zh-Hans`.
+- The Mound manifest supports compatibility mode only, overriding `zh-Hans`.
+  The portable UI still exposes an experimental native `zh-Hant` option;
+  it is not verified for The Mound and should be hidden until supported.

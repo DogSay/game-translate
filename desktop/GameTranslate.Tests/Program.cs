@@ -41,6 +41,28 @@ var tests = new (string Name, Func<Task> Run)[]
     ("updates every duplicate culture key", Sync(UpdatesDuplicateCultureKeys)),
     ("stages a culture change and rolls it back", Sync(RollsBackCultureChange)),
     ("restore resets culture while disabling the owned patch", Sync(ResetsCultureWhenDisablingPatch)),
+    ("disable migrates legacy state outside the game folder", Sync(DisableMigratesLegacyStateOutsideGame)),
+    ("legacy migration refuses an occupied destination without deleting either copy", Sync(MigrationKeepsBothOnDestinationConflict)),
+    ("legacy migration preserves a writer that remains open during the move", Sync(MigrationPreservesOpenWriter)),
+    ("patch disabling remains available when legacy migration conflicts", Sync(DisableWorksDespiteMigrationConflict)),
+    ("delete writes state outside a fresh game folder", Sync(DeleteKeepsFreshGameFolderClean)),
+    ("portable storage refuses an AppData root inside the game", Sync(RejectsInGameStorageRoot)),
+    ("portable storage refuses a linked AppData root inside the game", Sync(RejectsLinkedInGameStorageRoot)),
+    ("portable storage refuses a linked per-game destination", Sync(RejectsLinkedPerGameDestination)),
+    ("session logging does not occupy the migration destination", Sync(SessionLogsDoNotBlockMigration)),
+    ("session logging refuses a linked path inside the game", Sync(SessionLogsRejectLinkedGamePath)),
+    ("portable tools are shared across games and migrate an existing cache", Sync(SharesAndMigratesToolCache)),
+    ("portable tools refuse a linked shared destination", Sync(RejectsLinkedSharedToolDestination)),
+    ("portable tools refuse a linked old per-game cache", Sync(RejectsLinkedOldToolCache)),
+    ("a locked old tool cache does not prevent creating shared tools", Sync(LockedOldToolsDoNotBlockSharedCache)),
+    ("shared tool preparation refuses an active cleanup for the same game", Sync(SharedToolsRespectGameOperationLease)),
+    ("cache clearing removes only the selected game's disposable data", Sync(ClearsOnlySelectedGameCache)),
+    ("cache clearing creates no storage for a game without cache", Sync(ClearingAbsentCacheIsNoOp)),
+    ("cache clearing refuses an unexpected file at the game-store path", Sync(ClearingRefusesUnexpectedStoreFile)),
+    ("cache clearing refuses to run during another game operation", Sync(ClearingRefusesActiveGameOperation)),
+    ("cache clearing preserves another live session log", Sync(ClearingPreservesOtherLiveLog)),
+    ("session log paths are unique for concurrent instances", Sync(SessionLogPathsAreUnique)),
+    ("portable storage refuses a destination beneath a drive-root game", Sync(RejectsDriveRootStorage)),
     ("persists successful translation batches", PersistsTranslationMemory),
     ("reads wrapped and flat translation-memory snapshots", Sync(ReadsTranslationMemorySnapshots)),
     ("rejects invalid translation-memory snapshots", Sync(RejectsInvalidTranslationMemorySnapshots)),
@@ -72,9 +94,16 @@ var tests = new (string Name, Func<Task> Run)[]
     ("picks the dominant simplified culture across candidates", Sync(PicksDominantCulture)),
     ("derives culture-specific patch names", Sync(DerivesCulturePatchNames)),
     ("reads the installed target culture from install state", Sync(ReadsInstalledTargetCulture)),
+    ("reads the installed culture from per-game AppData state", Sync(ReadsCultureFromAppData)),
+    ("conflicting legacy and AppData state refuses a culture guess", Sync(ConflictingCultureStateRefusesGuess)),
     ("builds the UEExtractor version argument from executable parts", Sync(BuildsUeExtractorVersionArgument)),
     ("updates an existing Culture key without inventing one", Sync(UpdatesExistingCultureKey)),
     ("retries a failed tool run exactly once", RetriesToolRunOnce),
+    ("retries a zero-exit focused extraction when no CSV was produced", RetriesMissingFocusedCsv),
+    ("retries a zero-exit focused extraction when the CSV is empty", RetriesEmptyFocusedCsv),
+    ("focused extraction never reuses a CSV from a failed attempt", DoesNotReuseFailedFocusedCsv),
+    ("focused extraction refuses a nonempty output directory before running", RejectsPreexistingFocusedCsv),
+    ("focused extraction fails after two zero-exit runs without a CSV", MissingFocusedCsvFailsClosed),
     ("native mode targets zh-Hant while compat keeps the source culture", Sync(MapsModeToTargetCulture)),
     ("restore culture prefers the recorded source culture", Sync(RestoreCulturePrefersSource)),
     ("pinned native runtime accepts a verified existing DLL without network", AcceptsVerifiedNativeRuntime),
@@ -84,6 +113,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("pinned native runtime verifies archive and extracted DLL before installation", VerifiesNativeRuntimeDownload),
     ("repak runtime rejects an unverified existing Oodle DLL", Sync(RejectsUnverifiedRepakRuntime)),
     ("Unreal workflow rejects an unverified runtime before starting tools", WorkflowRejectsUnverifiedRuntime),
+    ("Unreal workflow refuses to start while cache clearing holds the game lease", WorkflowRespectsGameOperationLease),
 };
 
 var failures = 0;
@@ -560,15 +590,16 @@ static void RollsBackCultureChange()
 static void ResetsCultureWhenDisablingPatch()
 {
     using var fixture = new TemporaryDirectory();
-    var paks = Path.Combine(fixture.Path, "Game", "Content", "Paks");
+    var gameRoot = Path.Combine(fixture.Path, "InstalledGame");
+    var paks = Path.Combine(gameRoot, "Game", "Content", "Paks");
     Directory.CreateDirectory(paks);
     var patch = Path.Combine(paks, "pakchunk99-GameTranslate_zhHant_P.pak");
     File.WriteAllText(patch, "owned");
     var config = Path.Combine(fixture.Path, "Local", "Game", "Saved", "Config", "Windows", "GameUserSettings.ini");
     Directory.CreateDirectory(Path.GetDirectoryName(config)!);
     File.WriteAllText(config, "[Internationalization]\nLanguage=zh-Hant\nLocale=zh-Hant\n");
-    var game = new GameDetection(fixture.Path, EngineKind.Unreal, PackagingKind.Pak, "Game", paks, []);
-    var stateDirectory = Path.Combine(fixture.Path, ".game-translate");
+    var game = new GameDetection(gameRoot, EngineKind.Unreal, PackagingKind.Pak, "Game", paks, []);
+    var stateDirectory = Path.Combine(gameRoot, ".game-translate");
     Directory.CreateDirectory(stateDirectory);
     File.WriteAllText(Path.Combine(stateDirectory, "install-state.json"), "{\"version\":3,\"active\":true,\"artifact\":{\"Companions\":[{\"Name\":\"patch.utoc\"}]}}");
 
@@ -577,9 +608,419 @@ static void ResetsCultureWhenDisablingPatch()
     False(File.Exists(patch));
     True(File.Exists(patch + ".disabled"));
     True(File.ReadAllText(config).Contains("Language=zh-Hans"));
-    using var state = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(stateDirectory, "install-state.json")));
+    False(Directory.Exists(stateDirectory));
+    var migratedState = Path.Combine(PortableStorage.GameDirectory(gameRoot, Path.Combine(fixture.Path, "Local")), "install-state.json");
+    using var state = System.Text.Json.JsonDocument.Parse(File.ReadAllText(migratedState));
     False(state.RootElement.GetProperty("active").GetBoolean());
     Equal(1, state.RootElement.GetProperty("artifact").GetProperty("Companions").GetArrayLength());
+}
+
+static void DisableMigratesLegacyStateOutsideGame()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var paks = Path.Combine(gameRoot, "Example", "Content", "Paks");
+    Directory.CreateDirectory(paks);
+    var patch = Path.Combine(paks, "pakchunk99-GameTranslate_zhHans_P.pak");
+    File.WriteAllText(patch, "owned");
+    var legacy = Path.Combine(gameRoot, ".game-translate");
+    var memory = Path.Combine(legacy, "translation-memory", "zhconvert-taiwan.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(memory)!);
+    File.WriteAllText(memory, "{\"source\":\"translated\"}");
+    File.WriteAllText(Path.Combine(legacy, "install-state.json"),
+        "{\"version\":3,\"active\":true,\"artifact\":{\"SourceCulture\":\"zh-Hans\"}}");
+    var local = Path.Combine(fixture.Path, "Local");
+    var game = new GameDetection(gameRoot, EngineKind.Unreal, PackagingKind.Pak, "Example", paks, []);
+
+    PortableModeManager.DisableAndReset(game, local);
+
+    False(Directory.Exists(legacy));
+    var states = Directory.GetFiles(local, "install-state.json", SearchOption.AllDirectories);
+    Equal(1, states.Length);
+    True(File.ReadAllText(states[0]).Contains("\"active\": false", StringComparison.Ordinal));
+    True(File.Exists(Path.Combine(Path.GetDirectoryName(states[0])!, "translation-memory", "zhconvert-taiwan.json")));
+    True(File.Exists(patch + ".disabled"));
+}
+
+static void MigrationKeepsBothOnDestinationConflict()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var legacy = Path.Combine(gameRoot, ".game-translate");
+    Directory.CreateDirectory(legacy);
+    File.WriteAllText(Path.Combine(legacy, "new-log.txt"), "late write");
+    var destination = PortableStorage.GameDirectory(gameRoot, Path.Combine(fixture.Path, "Local"));
+    Directory.CreateDirectory(destination);
+    File.WriteAllText(Path.Combine(destination, "new-log.txt"), "late write");
+
+    Throws<InvalidDataException>(() => PortableStorage.PrepareGameDirectory(gameRoot, Path.Combine(fixture.Path, "Local")));
+    Equal("late write", File.ReadAllText(Path.Combine(legacy, "new-log.txt")));
+    Equal("late write", File.ReadAllText(Path.Combine(destination, "new-log.txt")));
+}
+
+static void MigrationPreservesOpenWriter()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var legacy = Path.Combine(gameRoot, ".game-translate");
+    Directory.CreateDirectory(legacy);
+    var source = Path.Combine(legacy, "active.log");
+    File.WriteAllText(source, "before");
+    using var writer = new FileStream(source, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+    writer.Seek(0, SeekOrigin.End);
+    var local = Path.Combine(fixture.Path, "Local");
+    try
+    {
+        var destination = PortableStorage.PrepareGameDirectory(gameRoot, local);
+        writer.Write("after"u8);
+        writer.Flush(flushToDisk: true);
+        writer.Dispose();
+        Equal("beforeafter", File.ReadAllText(Path.Combine(destination, "active.log")));
+        False(Directory.Exists(legacy));
+    }
+    catch (IOException)
+    {
+        // Some Windows file systems refuse a directory rename with an open writer.
+        // Failure is safe only if the live original remains untouched.
+        True(Directory.Exists(legacy));
+        writer.Write("after"u8);
+        writer.Flush(flushToDisk: true);
+        writer.Dispose();
+        Equal("beforeafter", File.ReadAllText(source));
+    }
+}
+
+static void DisableWorksDespiteMigrationConflict()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var paks = Path.Combine(gameRoot, "Example", "Content", "Paks");
+    Directory.CreateDirectory(paks);
+    var patch = Path.Combine(paks, "pakchunk99-GameTranslate_zhHans_P.pak");
+    File.WriteAllText(patch, "owned");
+    var legacy = Path.Combine(gameRoot, ".game-translate");
+    Directory.CreateDirectory(legacy);
+    File.WriteAllText(Path.Combine(legacy, "install-state.json"), "old-state");
+    var local = Path.Combine(fixture.Path, "Local");
+    var destination = PortableStorage.GameDirectory(gameRoot, local);
+    Directory.CreateDirectory(destination);
+    File.WriteAllText(Path.Combine(destination, "install-state.json"), "other-state");
+    var game = new GameDetection(gameRoot, EngineKind.Unreal, PackagingKind.Pak, "Example", paks, []);
+
+    var result = PortableModeManager.DisableAndReset(game, local);
+
+    True(result.StorageWarning is not null);
+    True(File.Exists(patch + ".disabled"));
+    Equal("old-state", File.ReadAllText(Path.Combine(legacy, "install-state.json")));
+    Equal("other-state", File.ReadAllText(Path.Combine(destination, "install-state.json")));
+}
+
+static void DeleteKeepsFreshGameFolderClean()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var paks = Path.Combine(gameRoot, "Example", "Content", "Paks");
+    Directory.CreateDirectory(paks);
+    var patch = Path.Combine(paks, "pakchunk99-GameTranslate_zhHans_P.pak");
+    File.WriteAllText(patch, "owned");
+    var local = Path.Combine(fixture.Path, "Local");
+    var game = new GameDetection(gameRoot, EngineKind.Unreal, PackagingKind.Pak, "Example", paks, []);
+
+    PortableModeManager.DeleteAndReset(game, local);
+
+    False(Directory.Exists(Path.Combine(gameRoot, ".game-translate")));
+    Equal(1, Directory.GetFiles(local, "install-state.json", SearchOption.AllDirectories).Length);
+    False(File.Exists(patch));
+}
+
+static void RejectsInGameStorageRoot()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(gameRoot);
+    var unsafeLocalRoot = Path.Combine(gameRoot, "AppData", "Local");
+    Throws<InvalidDataException>(() => PortableStorage.GameDirectory(gameRoot, unsafeLocalRoot));
+    False(Directory.Exists(unsafeLocalRoot));
+}
+
+static void RejectsLinkedInGameStorageRoot()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(gameRoot);
+    var link = Path.Combine(fixture.Path, "AppDataLink");
+    try { Directory.CreateSymbolicLink(link, gameRoot); }
+    catch (UnauthorizedAccessException) { return; } // Developer Mode or symlink privilege is unavailable.
+    catch (IOException error) when ((error.HResult & 0xFFFF) == 1314) { return; }
+    Throws<InvalidDataException>(() => PortableStorage.GameDirectory(gameRoot, link));
+    False(Directory.Exists(Path.Combine(gameRoot, "GameTranslate")));
+}
+
+static void RejectsLinkedPerGameDestination()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var other = Path.Combine(fixture.Path, "Other");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    Directory.CreateDirectory(other);
+    var destination = PortableStorage.GameDirectory(game, local);
+    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+    try { Directory.CreateSymbolicLink(destination, other); }
+    catch (UnauthorizedAccessException) { return; }
+    catch (IOException error) when ((error.HResult & 0xFFFF) == 1314) { return; }
+    Throws<InvalidDataException>(() => PortableStorage.PrepareGameDirectory(game, local));
+    False(Directory.Exists(Path.Combine(other, "work")));
+}
+
+static void SessionLogsDoNotBlockMigration()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(gameRoot);
+    var local = Path.Combine(fixture.Path, "Local");
+    var storage = PortableStorage.GameDirectory(gameRoot, local);
+    var logs = PortableStorage.SessionLogDirectory(gameRoot, local);
+    False(logs.StartsWith(storage + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    Directory.CreateDirectory(logs);
+    False(Directory.Exists(storage));
+    False(Directory.Exists(Path.Combine(gameRoot, ".game-translate")));
+}
+
+static void SessionLogsRejectLinkedGamePath()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(gameRoot);
+    var local = Path.Combine(fixture.Path, "Local");
+    var appRoot = Path.Combine(local, "GameTranslate");
+    Directory.CreateDirectory(appRoot);
+    try { Directory.CreateSymbolicLink(Path.Combine(appRoot, "session-logs"), gameRoot); }
+    catch (UnauthorizedAccessException) { return; }
+    catch (IOException error) when ((error.HResult & 0xFFFF) == 1314) { return; }
+    Throws<InvalidDataException>(() => PortableStorage.SessionLogDirectory(gameRoot, local));
+}
+
+static void SharesAndMigratesToolCache()
+{
+    using var fixture = new TemporaryDirectory();
+    var local = Path.Combine(fixture.Path, "Local");
+    var firstGame = Path.Combine(fixture.Path, "First Game");
+    var secondGame = Path.Combine(fixture.Path, "Second Game");
+    Directory.CreateDirectory(firstGame);
+    Directory.CreateDirectory(secondGame);
+    var version = "1.0.8.4-0.2.3";
+    var oldTools = Path.Combine(PortableStorage.GameDirectory(firstGame, local), "tools", version);
+    Directory.CreateDirectory(oldTools);
+    File.WriteAllText(Path.Combine(oldTools, "test-tool.exe"), "verified fixture");
+
+    var shared = PortableStorage.PrepareSharedToolsDirectory(firstGame, version, local);
+
+    Equal(shared, PortableStorage.PrepareSharedToolsDirectory(secondGame, version, local));
+    False(Directory.Exists(oldTools));
+    Equal("verified fixture", File.ReadAllText(Path.Combine(shared, "test-tool.exe")));
+    False(Directory.Exists(Path.Combine(firstGame, ".game-translate")));
+    False(Directory.Exists(Path.Combine(secondGame, ".game-translate")));
+}
+
+static void RejectsLinkedSharedToolDestination()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var other = Path.Combine(fixture.Path, "Other");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    Directory.CreateDirectory(other);
+    var shared = Path.Combine(local, "GameTranslate", "shared", "tools", "v1");
+    Directory.CreateDirectory(Path.GetDirectoryName(shared)!);
+    try { Directory.CreateSymbolicLink(shared, other); }
+    catch (UnauthorizedAccessException) { return; }
+    catch (IOException error) when ((error.HResult & 0xFFFF) == 1314) { return; }
+    Throws<InvalidDataException>(() => PortableStorage.PrepareSharedToolsDirectory(game, "v1", local));
+    False(File.Exists(Path.Combine(other, "repak.exe")));
+}
+
+static void RejectsLinkedOldToolCache()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var other = Path.Combine(fixture.Path, "Other");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    Directory.CreateDirectory(other);
+    var oldToolsRoot = Path.Combine(PortableStorage.GameDirectory(game, local), "tools");
+    Directory.CreateDirectory(Path.GetDirectoryName(oldToolsRoot)!);
+    try { Directory.CreateSymbolicLink(oldToolsRoot, other); }
+    catch (UnauthorizedAccessException) { return; }
+    catch (IOException error) when ((error.HResult & 0xFFFF) == 1314) { return; }
+    Throws<InvalidDataException>(() => PortableStorage.PrepareSharedToolsDirectory(game, "v1", local));
+    True(Directory.Exists(oldToolsRoot));
+}
+
+static void LockedOldToolsDoNotBlockSharedCache()
+{
+    using var fixture = new TemporaryDirectory();
+    var local = Path.Combine(fixture.Path, "Local");
+    var game = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(game);
+    var oldTools = Path.Combine(PortableStorage.GameDirectory(game, local), "tools", "v1");
+    Directory.CreateDirectory(oldTools);
+    var oldFile = Path.Combine(oldTools, "busy.exe");
+    File.WriteAllText(oldFile, "old cache");
+    using var locked = new FileStream(oldFile, FileMode.Open, FileAccess.Read, FileShare.None);
+
+    var shared = PortableStorage.PrepareSharedToolsDirectory(game, "v1", local);
+
+    True(Directory.Exists(shared));
+    True(File.Exists(Path.Combine(shared, "busy.exe")) || File.Exists(oldFile));
+}
+
+static void SharedToolsRespectGameOperationLease()
+{
+    using var fixture = new TemporaryDirectory();
+    var local = Path.Combine(fixture.Path, "Local");
+    var game = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(game);
+    using var clearing = PortableGameOperationLease.Acquire(game, local);
+
+    Throws<IOException>(() => PortableStorage.PrepareSharedToolsDirectory(game, "v1", local));
+    False(Directory.Exists(PortableStorage.GameDirectory(game, local)));
+}
+
+static void ClearsOnlySelectedGameCache()
+{
+    using var fixture = new TemporaryDirectory();
+    var local = Path.Combine(fixture.Path, "Local");
+    var game = Path.Combine(fixture.Path, "Game A");
+    var otherGame = Path.Combine(fixture.Path, "Game B");
+    var paks = Path.Combine(game, "Example", "Content", "Paks");
+    Directory.CreateDirectory(paks);
+    Directory.CreateDirectory(otherGame);
+    var patch = Path.Combine(paks, "pakchunk99-GameTranslate_zhHans_P.pak");
+    File.WriteAllText(patch, "installed patch");
+    var store = PortableStorage.GameDirectory(game, local);
+    var otherStore = PortableStorage.GameDirectory(otherGame, local);
+    var sharedTools = Path.Combine(local, "GameTranslate", "shared", "tools", "1.0.8.4-0.2.3");
+    foreach (var path in new[] {
+        Path.Combine(store, "work", "run", "probe.log"),
+        Path.Combine(store, "dist", "compat", "patch.pak"),
+        Path.Combine(store, "tools", "old", "legacy.exe"),
+        Path.Combine(store, "logs", "old.log"),
+        Path.Combine(store, "translation-memory", "zhconvert-taiwan.json"),
+        Path.Combine(store, "install-state.json"),
+        Path.Combine(store, "custom-note.txt"),
+        Path.Combine(otherStore, "work", "other.log"),
+        Path.Combine(sharedTools, "repak.exe") })
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "keep or clear");
+    }
+    var sessionLogs = PortableStorage.SessionLogDirectory(game, local);
+    Directory.CreateDirectory(sessionLogs);
+    var activeLog = Path.Combine(sessionLogs, "GameTranslate-active.log");
+    var oldLog = Path.Combine(sessionLogs, "GameTranslate-old.log");
+    File.WriteAllText(activeLog, "current session");
+    File.WriteAllText(oldLog, "old session");
+
+    var result = PortableCacheCleaner.ClearGameCache(game, activeLog, local);
+
+    True(result.ReclaimedBytes > 0);
+    foreach (var name in new[] { "work", "dist", "tools", "logs" })
+        False(Directory.Exists(Path.Combine(store, name)));
+    False(File.Exists(oldLog));
+    True(File.Exists(activeLog));
+    True(File.Exists(Path.Combine(store, "translation-memory", "zhconvert-taiwan.json")));
+    True(File.Exists(Path.Combine(store, "install-state.json")));
+    True(File.Exists(Path.Combine(store, "custom-note.txt")));
+    True(File.Exists(Path.Combine(otherStore, "work", "other.log")));
+    True(File.Exists(Path.Combine(sharedTools, "repak.exe")));
+    True(File.Exists(patch));
+}
+
+static void ClearingAbsentCacheIsNoOp()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+
+    var result = PortableCacheCleaner.ClearGameCache(game, null, local);
+
+    Equal(0L, result.ReclaimedBytes);
+    False(Directory.Exists(Path.Combine(local, "GameTranslate")));
+    False(Directory.Exists(Path.Combine(game, ".game-translate")));
+}
+
+static void ClearingRefusesUnexpectedStoreFile()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    var store = PortableStorage.GameDirectory(game, local);
+    Directory.CreateDirectory(Path.GetDirectoryName(store)!);
+    File.WriteAllText(store, "user data");
+
+    Throws<InvalidDataException>(() => PortableCacheCleaner.ClearGameCache(game, null, local));
+    Equal("user data", File.ReadAllText(store));
+}
+
+static void ClearingRefusesActiveGameOperation()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    var store = PortableStorage.GameDirectory(game, local);
+    var workFile = Path.Combine(store, "work", "active.txt");
+    Directory.CreateDirectory(Path.GetDirectoryName(workFile)!);
+    File.WriteAllText(workFile, "still needed");
+    using var operation = PortableGameOperationLease.Acquire(game, local);
+
+    Throws<IOException>(() => PortableCacheCleaner.ClearGameCache(game, null, local));
+    Equal("still needed", File.ReadAllText(workFile));
+}
+
+static void ClearingPreservesOtherLiveLog()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    var logs = PortableStorage.SessionLogDirectory(game, local);
+    Directory.CreateDirectory(logs);
+    var current = Path.Combine(logs, "GameTranslate-current.log");
+    var other = Path.Combine(logs, "GameTranslate-other.log");
+    var old = Path.Combine(logs, "GameTranslate-old.log");
+    File.WriteAllText(current, "current");
+    File.WriteAllText(other, "other");
+    File.WriteAllText(old, "old");
+    using var live = new FileStream(other, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+
+    PortableCacheCleaner.ClearGameCache(game, current, local);
+
+    True(File.Exists(current));
+    True(File.Exists(other));
+    False(File.Exists(old));
+}
+
+static void SessionLogPathsAreUnique()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(game);
+    var first = PortableStorage.NewSessionLogPath(game, fixture.Path);
+    var second = PortableStorage.NewSessionLogPath(game, fixture.Path);
+    False(first.Equals(second, StringComparison.OrdinalIgnoreCase));
+    True(first.StartsWith(PortableStorage.SessionLogDirectory(game, fixture.Path) + Path.DirectorySeparatorChar,
+        StringComparison.OrdinalIgnoreCase));
+}
+
+static void RejectsDriveRootStorage()
+{
+    using var fixture = new TemporaryDirectory();
+    var driveRoot = Path.GetPathRoot(fixture.Path)!;
+    Throws<InvalidDataException>(() => PortableStorage.GameDirectory(driveRoot, fixture.Path));
 }
 
 static async Task PersistsTranslationMemory()
@@ -960,9 +1401,9 @@ static void UsesToolsDirectoryForUeExtractor()
     True(method is not null);
 
     var hosted = new PortableToolPaths(@"C:\Game\GameTranslate.exe",
-        ["--ueextractor-host", @"C:\Game\.game-translate\tools\1.0.8.4-0.2.3\UEExtractor.dll"],
+        ["--ueextractor-host", @"C:\Users\Example\AppData\Local\GameTranslate\games\ABC\tools\1.0.8.4-0.2.3\UEExtractor.dll"],
         @"C:\tools\repak.exe", @"C:\tools\retoc.exe");
-    Equal(@"C:\Game\.game-translate\tools\1.0.8.4-0.2.3", (string)method!.Invoke(hosted, [])!);
+    Equal(@"C:\Users\Example\AppData\Local\GameTranslate\games\ABC\tools\1.0.8.4-0.2.3", (string)method!.Invoke(hosted, [])!);
 
     var bare = new PortableToolPaths(@"C:\Tools\UEExtractor.exe", [], @"C:\tools\repak.exe", @"C:\tools\retoc.exe");
     Equal(@"C:\Tools", (string)method.Invoke(bare, [])!);
@@ -1010,11 +1451,41 @@ static void ReadsInstalledTargetCulture()
     Directory.CreateDirectory(stateDirectory);
     File.WriteAllText(Path.Combine(stateDirectory, "install-state.json"),
         """{ "version": 3, "active": true, "artifact": { "TargetCulture": "zh-CN" } }""");
-    var type = typeof(FileHashes).Assembly.GetType("GameTranslate.Core.SimplifiedCultures")!;
-    var method = type.GetMethod("InstalledTargetCulture", [typeof(string)]);
+    Equal("zh-CN", SimplifiedCultures.InstalledTargetCulture(fixture.Path));
+    Equal("zh-Hans", SimplifiedCultures.InstalledTargetCulture(Path.Combine(fixture.Path, "no-such-root")));
+}
+
+static void ReadsCultureFromAppData()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    Directory.CreateDirectory(gameRoot);
+    var localRoot = Path.Combine(fixture.Path, "Local");
+    var stateDirectory = PortableStorage.GameDirectory(gameRoot, localRoot);
+    Directory.CreateDirectory(stateDirectory);
+    File.WriteAllText(Path.Combine(stateDirectory, "install-state.json"),
+        """{ "version": 3, "active": true, "artifact": { "TargetCulture": "zh-CN", "SourceCulture": "zh-Hans" } }""");
+    var method = typeof(SimplifiedCultures).GetMethod("InstalledTargetCulture", [typeof(string), typeof(string)]);
     True(method is not null);
-    Equal("zh-CN", (string)method!.Invoke(null, [fixture.Path])!);
-    Equal("zh-Hans", (string)method.Invoke(null, [Path.Combine(fixture.Path, "no-such-root")])!);
+    Equal("zh-Hans", (string)method!.Invoke(null, [gameRoot, localRoot])!);
+    False(Directory.Exists(Path.Combine(gameRoot, ".game-translate")));
+}
+
+static void ConflictingCultureStateRefusesGuess()
+{
+    using var fixture = new TemporaryDirectory();
+    var game = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    Directory.CreateDirectory(game);
+    var legacy = Path.Combine(game, ".game-translate");
+    var destination = PortableStorage.GameDirectory(game, local);
+    Directory.CreateDirectory(legacy);
+    Directory.CreateDirectory(destination);
+    File.WriteAllText(Path.Combine(legacy, "install-state.json"),
+        """{"artifact":{"SourceCulture":"zh-CN"}}""");
+    File.WriteAllText(Path.Combine(destination, "install-state.json"),
+        """{"artifact":{"SourceCulture":"zh-Hans"}}""");
+    Throws<InvalidDataException>(() => SimplifiedCultures.InstalledTargetCulture(game, local));
 }
 
 static void BuildsUeExtractorVersionArgument()
@@ -1056,9 +1527,7 @@ static void RestoreCulturePrefersSource()
     Directory.CreateDirectory(stateDirectory);
     File.WriteAllText(Path.Combine(stateDirectory, "install-state.json"),
         """{ "version": 3, "active": true, "artifact": { "Mode": "native", "TargetCulture": "zh-Hant", "SourceCulture": "zh-CN" } }""");
-    var type = typeof(FileHashes).Assembly.GetType("GameTranslate.Core.SimplifiedCultures")!;
-    var method = type.GetMethod("InstalledTargetCulture", [typeof(string)])!;
-    Equal("zh-CN", (string)method.Invoke(null, [fixture.Path])!);
+    Equal("zh-CN", SimplifiedCultures.InstalledTargetCulture(fixture.Path));
 }
 
 static async Task RetriesToolRunOnce()
@@ -1079,6 +1548,78 @@ static async Task RetriesToolRunOnce()
     var single = await (Task<int>)method.Invoke(null, [flaky, alwaysOk, null, 1])!;
     Equal(1, single);
     Equal(1, attempts);
+}
+
+static async Task RetriesMissingFocusedCsv()
+{
+    using var fixture = new TemporaryDirectory();
+    var expected = Path.Combine(fixture.Path, "OnlineSubsystemSteam.csv");
+    var runner = new ScriptedProcessRunner(attempt =>
+    {
+        if (attempt == 2) File.WriteAllText(expected, "key,source,Translation\nentry,简体,\n");
+        return new ProcessResult(0, attempt == 1 ? "Mount() newly mounted: 0" : "Mount() newly mounted: 4");
+    });
+    var result = await UeExtractionFiles.ExtractWithRetryAsync(runner, "UEExtractor.exe", ["game", "output"], fixture.Path,
+        fixture.Path, "OnlineSubsystemSteam", "pakchunk0-Windows", CancellationToken.None);
+    Equal(2, runner.Attempts);
+    Equal(expected, result.Csv);
+    True(File.ReadAllText(result.Csv).Contains("简体", StringComparison.Ordinal));
+}
+
+static async Task MissingFocusedCsvFailsClosed()
+{
+    using var fixture = new TemporaryDirectory();
+    var runner = new ScriptedProcessRunner(_ => new ProcessResult(0, "Mount() newly mounted: 0"));
+    await ThrowsAsync<FileNotFoundException>(() => UeExtractionFiles.ExtractWithRetryAsync(runner, "UEExtractor.exe",
+        ["game", "output"], fixture.Path, fixture.Path, "OnlineSubsystemSteam", "pakchunk0-Windows", CancellationToken.None));
+    Equal(2, runner.Attempts);
+}
+
+static async Task RetriesEmptyFocusedCsv()
+{
+    using var fixture = new TemporaryDirectory();
+    var csv = Path.Combine(fixture.Path, "Game.csv");
+    var runner = new ScriptedProcessRunner(attempt =>
+    {
+        File.WriteAllText(csv, attempt == 1 ? string.Empty : "key,source,Translation\nentry,简体,\n");
+        return new ProcessResult(0, "Mount() newly mounted: 4");
+    });
+    var result = await UeExtractionFiles.ExtractWithRetryAsync(runner, "UEExtractor.exe", ["game", "output"], fixture.Path,
+        fixture.Path, "Game", "pakchunk0-Windows", CancellationToken.None);
+    Equal(2, runner.Attempts);
+    Equal(csv, result.Csv);
+    True(new FileInfo(result.Csv).Length > 0);
+}
+
+static async Task DoesNotReuseFailedFocusedCsv()
+{
+    using var fixture = new TemporaryDirectory();
+    var csv = Path.Combine(fixture.Path, "Game.csv");
+    var runner = new ScriptedProcessRunner(attempt =>
+    {
+        if (attempt == 1)
+        {
+            File.WriteAllText(csv, "key,source,Translation\nentry,partial,\n");
+            return new ProcessResult(1, "first attempt failed after a partial write");
+        }
+        return new ProcessResult(0, "Mount() newly mounted: 0");
+    });
+    await ThrowsAsync<FileNotFoundException>(() => UeExtractionFiles.ExtractWithRetryAsync(runner, "UEExtractor.exe",
+        ["game", "output"], fixture.Path, fixture.Path, "Game", "pakchunk0-Windows", CancellationToken.None));
+    Equal(2, runner.Attempts);
+    False(File.Exists(csv));
+}
+
+static async Task RejectsPreexistingFocusedCsv()
+{
+    using var fixture = new TemporaryDirectory();
+    var csv = Path.Combine(fixture.Path, "Game.csv");
+    File.WriteAllText(csv, "older run");
+    var runner = new ScriptedProcessRunner(_ => new ProcessResult(0, "Mount() newly mounted: 0"));
+    await ThrowsAsync<InvalidDataException>(() => UeExtractionFiles.ExtractWithRetryAsync(runner, "UEExtractor.exe",
+        ["game", "output"], fixture.Path, fixture.Path, "Game", "pakchunk0-Windows", CancellationToken.None));
+    Equal(0, runner.Attempts);
+    Equal("older run", File.ReadAllText(csv));
 }
 
 static object InvokeLocresSurgery(byte[] input, IReadOnlyDictionary<string, string> translations)
@@ -1267,6 +1808,26 @@ static async Task WorkflowRejectsUnverifiedRuntime()
     await ThrowsAsync<InvalidDataException>(() => workflow.BuildAndInstallAsync(game, TranslationMode.Compatibility, CancellationToken.None));
 }
 
+static async Task WorkflowRespectsGameOperationLease()
+{
+    using var fixture = new TemporaryDirectory();
+    var gameRoot = Path.Combine(fixture.Path, "Game");
+    var local = Path.Combine(fixture.Path, "Local");
+    var paks = Path.Combine(gameRoot, "Example", "Content", "Paks");
+    var toolsDirectory = Path.Combine(fixture.Path, "tools");
+    Directory.CreateDirectory(paks);
+    Directory.CreateDirectory(toolsDirectory);
+    await File.WriteAllBytesAsync(Path.Combine(toolsDirectory, "oo2core_9_win64.dll"), [1, 2, 3]);
+    var paths = new PortableToolPaths(Path.Combine(toolsDirectory, "UEExtractor.exe"), [],
+        Path.Combine(toolsDirectory, "repak.exe"), Path.Combine(toolsDirectory, "retoc.exe"));
+    var game = new GameDetection(gameRoot, EngineKind.Unreal, PackagingKind.Pak, "Example", paks, []);
+    var workflow = new UnrealTranslationWorkflow(new NeverProcessRunner(), new ThrowingTranslationApi(), paths, _ => { }, local);
+    using var clearing = PortableGameOperationLease.Acquire(gameRoot, local);
+
+    await ThrowsAsync<IOException>(() => workflow.BuildAndInstallAsync(game, TranslationMode.Compatibility, CancellationToken.None));
+    False(Directory.Exists(PortableStorage.GameDirectory(gameRoot, local)));
+}
+
 static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception
 {
     try { await action(); }
@@ -1304,6 +1865,14 @@ sealed class NeverProcessRunner : IProcessRunner
 {
     public Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken) =>
         throw new Exception("No external process may start before native runtime verification.");
+}
+
+sealed class ScriptedProcessRunner(Func<int, ProcessResult> run) : IProcessRunner
+{
+    public int Attempts { get; private set; }
+
+    public Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken) =>
+        Task.FromResult(run(++Attempts));
 }
 
 sealed class ThrowingTranslationApi : ITranslationApi

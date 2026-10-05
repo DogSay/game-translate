@@ -10,6 +10,7 @@
     "audit:repo": "node ./scripts/audit-repository.mjs",
     "test:node": "node --test",
     "test:desktop": "dotnet run --project ./desktop/GameTranslate.Tests/GameTranslate.Tests.csproj",
+    "test:ui": "dotnet run --project ./desktop/GameTranslate.UiTests/GameTranslate.UiTests.csproj -c Release",
     "build:exe": "dotnet build ./desktop/GameTranslate.App/GameTranslate.App.csproj -c Release",
     "publish:exe": "dotnet publish ./desktop/GameTranslate.App/GameTranslate.App.csproj -c Release -r win-x64 --self-contained true -o ./dist/portable",
     "doctor": "node ./src/cli.mjs doctor",

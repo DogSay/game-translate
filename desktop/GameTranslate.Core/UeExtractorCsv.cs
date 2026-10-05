@@ -7,6 +7,42 @@ public sealed record UeLocalizationExtraction(string Csv, string? Hashes);
 
 public static class UeExtractionFiles
 {
+    public static async Task<UeLocalizationExtraction> ExtractWithRetryAsync(IProcessRunner processes, string executable,
+        IReadOnlyList<string> arguments, string workingDirectory, string outputDirectory, string name, string archiveBase,
+        CancellationToken cancellationToken, Action<string>? onRetry = null)
+    {
+        ValidateName(name, archiveBase);
+        if (Directory.EnumerateFileSystemEntries(outputDirectory).Any())
+            throw new InvalidDataException($"Focused extraction requires an empty output directory: {outputDirectory}");
+        var last = await Retry.OnceAsync(async () =>
+        {
+            var process = await processes.RunAsync(executable, arguments, workingDirectory, cancellationToken);
+            if (!process.Success) return (Process: process, Files: (UeLocalizationExtraction?)null);
+            try
+            {
+                var files = FindLocalization(outputDirectory, name, archiveBase);
+                return (Process: process, Files: new FileInfo(files.Csv).Length > 0 ? files : null);
+            }
+            catch (FileNotFoundException)
+            {
+                return (Process: process, Files: (UeLocalizationExtraction?)null);
+            }
+        }, attempt => attempt.Process.Success && attempt.Files is not null, message =>
+        {
+            if (Directory.EnumerateDirectories(outputDirectory).Any())
+                throw new InvalidDataException($"Unexpected UEExtractor subdirectory in {outputDirectory}");
+            foreach (var file in Directory.EnumerateFiles(outputDirectory)) File.Delete(file);
+            onRetry?.Invoke(message);
+        });
+
+        if (last.Files is not null) return last.Files;
+        await File.WriteAllTextAsync(Path.Combine(outputDirectory, "extract-output.log"), last.Process.Output, cancellationToken);
+        if (!last.Process.Success)
+            throw new InvalidDataException($"{name} 抽取失敗（已重試一次）。\n{last.Process.Output}");
+        var final = FindLocalization(outputDirectory, name, archiveBase);
+        throw new InvalidDataException($"{name} 抽取結果 CSV 為空：{final.Csv}");
+    }
+
     public static UeLocalizationExtraction FindLocalization(string directory, string name, string archiveBase)
     {
         ValidateName(name, archiveBase);

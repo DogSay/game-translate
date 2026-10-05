@@ -47,6 +47,7 @@ public sealed class UnrealTranslationWorkflow
     {
         if (game.Engine != EngineKind.Unreal || game.PaksDirectory is null)
             throw new NotSupportedException("目前只有 Unreal 外加 patch 流程可安全執行。");
+        using var operation = PortableGameOperationLease.Acquire(game.GameRoot, _localAppDataRoot);
 
         var toolsDirectory = _tools.UeExtractorWorkingDirectory();
         NativeRuntimePreflight.VerifyExistingRepakRuntime(Path.GetDirectoryName(_tools.Repak)!);
@@ -54,7 +55,7 @@ public sealed class UnrealTranslationWorkflow
             NativeRuntimeClient, cancellationToken);
         Log("Native archive runtimes verified before starting Unreal tools.");
 
-        var portableRoot = Path.Combine(game.GameRoot, ".game-translate");
+        var portableRoot = PortableStorage.PrepareGameDirectory(game.GameRoot, _localAppDataRoot);
         var runId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         var runRoot = Path.Combine(portableRoot, "work", runId);
         var probeDirectory = Path.Combine(runRoot, "probe");
@@ -125,18 +126,11 @@ public sealed class UnrealTranslationWorkflow
             string[] extractionArguments = versionArgument is null
                 ? [unrealProjectRoot, SlashDirectory(targetRoot), $"--path={parentPath}/", "--extract-locres", "--no-parallel"]
                 : [unrealProjectRoot, SlashDirectory(targetRoot), versionArgument, $"--path={parentPath}/", "--extract-locres", "--no-parallel"];
-            var extraction = await Retry.OnceAsync(
-                () => _processes.RunAsync(_tools.UeExtractorHost, UeArguments(extractionArguments), _tools.UeExtractorWorkingDirectory(), cancellationToken),
-                result => result.Success,
-                _ => Log($"{candidate.Name} 抽取失敗（可能係暫時性 archive 存取失敗），2 秒後重試一次……", warning: true));
-            if (!extraction.Success)
-            {
-                await File.WriteAllTextAsync(Path.Combine(targetRoot, "extract-output.log"), extraction.Output, cancellationToken);
-                throw new InvalidDataException($"{candidate.Name} 抽取失敗（已重試一次）。\n{extraction.Output}");
-            }
-
             var archiveBase = Path.GetFileNameWithoutExtension(candidate.SourceArchive);
-            var extractedFiles = UeExtractionFiles.FindLocalization(targetRoot, candidate.Name, archiveBase);
+            var extractedFiles = await UeExtractionFiles.ExtractWithRetryAsync(_processes, _tools.UeExtractorHost,
+                UeArguments(extractionArguments), _tools.UeExtractorWorkingDirectory(), targetRoot, candidate.Name,
+                archiveBase, cancellationToken,
+                _ => Log($"{candidate.Name} 抽取未產出可用 CSV（或工具失敗），2 秒後重試一次……", warning: true));
             var csv = extractedFiles.Csv;
             var hashes = extractedFiles.Hashes;
             var sourceText = await File.ReadAllTextAsync(csv, cancellationToken);

@@ -158,23 +158,24 @@ public static partial class CultureConfig
     }
 }
 
-public sealed record PortableDisableResult(IReadOnlyList<string> DisabledPatches, string? ConfigPath, string? ConfigBackup);
+public sealed record PortableDisableResult(IReadOnlyList<string> DisabledPatches, string? ConfigPath, string? ConfigBackup, string? StorageWarning = null);
 
-public sealed record PortableDeleteResult(IReadOnlyList<string> DeletedPaths, string? ConfigPath, string? ConfigBackup);
+public sealed record PortableDeleteResult(IReadOnlyList<string> DeletedPaths, string? ConfigPath, string? ConfigBackup, string? StorageWarning = null);
 
 public static class PortableModeManager
 {
     public static PortableDisableResult DisableAndReset(GameDetection game, string localAppDataRoot, string sourceCulture = "zh-Hans")
     {
         if (game.PaksDirectory is null) throw new NotSupportedException("Detected game has no writable Unreal Paks directory.");
+        var (storage, warning) = TryPrepareStorage(game.GameRoot, localAppDataRoot);
         var configPath = CultureConfig.FindExisting(game, localAppDataRoot);
         using var config = configPath is null ? null : CultureConfig.Prepare(configPath, sourceCulture);
         var disabled = PatchManager.DisableOwned(game.PaksDirectory);
         try
         {
             config?.Commit();
-            WriteDisabledState(game, disabled);
-            return new(disabled, configPath, config?.BackupPath);
+            if (storage is not null) WriteDisabledState(storage, disabled);
+            return new(disabled, configPath, config?.BackupPath, warning);
         }
         catch
         {
@@ -187,29 +188,38 @@ public static class PortableModeManager
     public static PortableDeleteResult DeleteAndReset(GameDetection game, string localAppDataRoot, string sourceCulture = "zh-Hans")
     {
         if (game.PaksDirectory is null) throw new NotSupportedException("Detected game has no writable Unreal Paks directory.");
+        var (storage, warning) = TryPrepareStorage(game.GameRoot, localAppDataRoot);
         var configPath = CultureConfig.FindExisting(game, localAppDataRoot);
         using var config = configPath is null ? null : CultureConfig.Prepare(configPath, sourceCulture);
         // Commit the culture reset before deleting: deletion is irreversible, so never leave
         // the player pointed at a culture whose data has just been removed.
         config?.Commit();
         var deleted = PatchManager.DeleteOwned(game.PaksDirectory);
-        WriteDeletedState(game, deleted);
-        return new(deleted, configPath, config?.BackupPath);
+        if (storage is not null) WriteDeletedState(storage, deleted);
+        return new(deleted, configPath, config?.BackupPath, warning);
     }
 
-    private static void WriteDeletedState(GameDetection game, IReadOnlyList<string> deleted)
+    private static (string? Storage, string? Warning) TryPrepareStorage(string gameRoot, string localAppDataRoot)
     {
-        var directory = Path.Combine(game.GameRoot, ".game-translate");
-        Directory.CreateDirectory(directory);
+        try { return (PortableStorage.PrepareGameDirectory(gameRoot, localAppDataRoot), null); }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException)
+        {
+            // Patch state is also represented by the physical .pak/.disabled files.
+            // Keep management usable when old work data cannot safely migrate; never
+            // overwrite either the legacy tree or a conflicting AppData destination.
+            return (null, error.Message);
+        }
+    }
+
+    private static void WriteDeletedState(string directory, IReadOnlyList<string> deleted)
+    {
         var destination = Path.Combine(directory, "install-state.json");
         var state = new { version = 3, active = false, deletedAt = DateTimeOffset.UtcNow, deleted };
         File.WriteAllText(destination, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private static void WriteDisabledState(GameDetection game, IReadOnlyList<string> disabled)
+    private static void WriteDisabledState(string directory, IReadOnlyList<string> disabled)
     {
-        var directory = Path.Combine(game.GameRoot, ".game-translate");
-        Directory.CreateDirectory(directory);
         var destination = Path.Combine(directory, "install-state.json");
         JsonElement? artifact = null;
         if (File.Exists(destination))

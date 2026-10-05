@@ -7,6 +7,7 @@ namespace GameTranslate.App;
 
 internal static class ToolInstaller
 {
+    private const string ToolVersion = "1.0.8.4-0.2.3";
     private static readonly string[] Resources =
     [
         "UEExtractor.dll", "UEExtractor.exe", "UEExtractor.runtimeconfig.json", "UEExtractor-LICENSE.txt",
@@ -16,12 +17,18 @@ internal static class ToolInstaller
 
     public static PortableToolPaths Ensure(string gameRoot)
     {
-        var directory = Path.Combine(Path.GetFullPath(gameRoot), ".game-translate", "tools", "1.0.8.4-0.2.3");
-        Directory.CreateDirectory(directory);
-        var assembly = typeof(ToolInstaller).Assembly;
-        foreach (var name in Resources) ExtractVerified(assembly, $"Tools.{name}", Path.Combine(directory, name));
-        return new(Path.Combine(directory, "UEExtractor.exe"), Array.Empty<string>(),
-            Path.Combine(directory, "repak.exe"), Path.Combine(directory, "retoc.exe"));
+        using var gate = new Mutex(false, @"Local\GameTranslate.SharedTools." + ToolVersion);
+        try { gate.WaitOne(); }
+        catch (AbandonedMutexException) { } // Previous process exited; this process now owns the mutex.
+        try
+        {
+            var directory = PortableStorage.PrepareSharedToolsDirectory(gameRoot, ToolVersion);
+            var assembly = typeof(ToolInstaller).Assembly;
+            foreach (var name in Resources) ExtractVerified(assembly, $"Tools.{name}", Path.Combine(directory, name));
+            return new(Path.Combine(directory, "UEExtractor.exe"), Array.Empty<string>(),
+                Path.Combine(directory, "repak.exe"), Path.Combine(directory, "retoc.exe"));
+        }
+        finally { gate.ReleaseMutex(); }
     }
 
     private static void ExtractVerified(Assembly assembly, string resourceName, string destination)

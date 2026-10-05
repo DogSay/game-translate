@@ -38,11 +38,15 @@ public static class SimplifiedCultures
     public static string PatchName(string culture) =>
         $"pakchunk99-GameTranslate_{culture.Replace("-", "", StringComparison.Ordinal)}_P.pak";
 
-    public static string InstalledTargetCulture(string gameRoot)
+    public static string InstalledTargetCulture(string gameRoot, string? localAppDataRoot = null)
     {
+        var modernPath = Path.Combine(PortableStorage.GameDirectory(gameRoot, localAppDataRoot), "install-state.json");
+        var legacyPath = Path.Combine(gameRoot, ".game-translate", "install-state.json");
+        if (File.Exists(modernPath) && File.Exists(legacyPath))
+            throw new InvalidDataException("Conflicting install states exist in AppData and the legacy game folder; resolve the migration before changing the game's language.");
         try
         {
-            var path = Path.Combine(gameRoot, ".game-translate", "install-state.json");
+            var path = File.Exists(modernPath) ? modernPath : legacyPath;
             if (!File.Exists(path)) return "zh-Hans";
             using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path).TrimStart('﻿'));
             if (document.RootElement.TryGetProperty("artifact", out var artifact)

@@ -5,14 +5,15 @@ namespace GameTranslate.App;
 
 internal sealed class MainForm : Form
 {
-    private readonly TextBox _root = new() { Dock = DockStyle.Fill, ReadOnly = true };
+    private readonly TextBox _root = new() { Anchor = AnchorStyles.Left | AnchorStyles.Right, ReadOnly = true, Margin = new Padding(0, 0, 8, 0) };
     private readonly Label _status = new() { AutoSize = true, Font = new Font("Segoe UI", 12, FontStyle.Bold) };
     private readonly Label _details = new() { AutoSize = true, MaximumSize = new Size(850, 0) };
     private readonly Label _apiStatus = new() { AutoSize = true, Text = "未測試" };
-    private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 390 };
+    private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 365 };
     private readonly Button _translate = new() { Text = "開始翻譯並安裝 Patch", AutoSize = true, Height = 34 };
     private readonly Button _restore = new() { Text = "還原／停用翻譯 Patch", AutoSize = true, Height = 34 };
     private readonly Button _delete = new() { Text = "刪除翻譯 Patch", AutoSize = true, Height = 34 };
+    private readonly Button _clearCache = new() { Text = "清除快取…", AutoSize = true, Height = 34 };
     private readonly Button _cancel = new() { Text = "取消", AutoSize = true, Enabled = false };
     private readonly TextBox _log = new() { Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, Dock = DockStyle.Fill, Font = new Font("Consolas", 9), BackColor = Color.FromArgb(24, 28, 34), ForeColor = Color.Gainsboro };
     private string _gameRoot;
@@ -37,7 +38,8 @@ internal sealed class MainForm : Form
         _mode.Items.Add("原生模式：新增繁體語言 zh-Hant（實驗性）");
         _mode.SelectedIndex = 0;
         BuildLayout();
-        Shown += (_, _) => DetectGame();
+        Shown += (_, _) => { TryPrepareStorage(); DetectGame(); };
+        FormClosed += (_, _) => _logger.Dispose();
     }
 
     private void BuildLayout()
@@ -58,9 +60,9 @@ internal sealed class MainForm : Form
         pathPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         pathPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         pathPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        pathPanel.Controls.Add(new Label { Text = "遊戲資料夾：", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        pathPanel.Controls.Add(new Label { Text = "遊戲資料夾：", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 8, 0) }, 0, 0);
         pathPanel.Controls.Add(_root, 1, 0);
-        var choose = new Button { Text = "選擇……", AutoSize = true };
+        var choose = new Button { Text = "選擇……", AutoSize = true, Anchor = AnchorStyles.Right, MinimumSize = new Size(0, 34), Margin = new Padding(0) };
         choose.Click += (_, _) => ChooseFolder();
         pathPanel.Controls.Add(choose, 2, 0);
         main.Controls.Add(pathPanel);
@@ -70,37 +72,61 @@ internal sealed class MainForm : Form
         detectionPanel.Controls.Add(_details);
         main.Controls.Add(detectionPanel);
 
-        var options = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Margin = new Padding(0, 0, 0, 10) };
-        options.Controls.Add(new Label { Text = "翻譯方法：", AutoSize = true, Padding = new Padding(0, 7, 0, 0) });
-        options.Controls.Add(_mode);
-        var testApi = new Button { Text = "測試繁化姬 API", AutoSize = true };
+        var options = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, RowCount = 1, Margin = new Padding(0, 0, 0, 10) };
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        options.Controls.Add(new Label { Text = "翻譯方法：", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 8, 0) }, 0, 0);
+        _mode.Anchor = AnchorStyles.Left;
+        _mode.Margin = new Padding(0, 0, 8, 0);
+        options.Controls.Add(_mode, 1, 0);
+        var testApi = new Button { Text = "測試繁化姬 API", AutoSize = true, Anchor = AnchorStyles.Left, MinimumSize = new Size(0, 34), Margin = new Padding(0, 0, 10, 0) };
         testApi.Click += async (_, _) => await TestApi();
-        options.Controls.Add(testApi);
-        options.Controls.Add(_apiStatus);
+        options.Controls.Add(testApi, 2, 0);
+        _apiStatus.Anchor = AnchorStyles.Left;
+        _apiStatus.Margin = new Padding(0);
+        options.Controls.Add(_apiStatus, 3, 0);
         main.Controls.Add(options);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Margin = new Padding(0, 0, 0, 10) };
+        var actions = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 5, RowCount = 1, Margin = new Padding(0, 0, 0, 10) };
+        for (var column = 0; column < 5; column++) actions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _translate.Click += async (_, _) => await Translate();
         _restore.Click += (_, _) => { if (_uiState?.CanRestore == true) Restore(); else EnablePatch(); };
         _delete.Click += (_, _) => Delete();
+        _clearCache.Click += (_, _) => ClearCache();
         _cancel.Click += (_, _) => _cancellation?.Cancel();
-        actions.Controls.Add(_translate);
-        actions.Controls.Add(_restore);
-        actions.Controls.Add(_delete);
-        actions.Controls.Add(_cancel);
+        var actionButtons = new[] { _translate, _restore, _delete, _clearCache, _cancel };
+        for (var column = 0; column < actionButtons.Length; column++)
+        {
+            actionButtons[column].Anchor = AnchorStyles.Left;
+            actionButtons[column].MinimumSize = new Size(0, 34);
+            actionButtons[column].Margin = new Padding(0, 0, column == actionButtons.Length - 1 ? 0 : 8, 0);
+            actions.Controls.Add(actionButtons[column], column, 0);
+        }
         main.Controls.Add(actions);
 
         var logGroup = new GroupBox { Text = "操作記錄 / Error Log", Dock = DockStyle.Fill, Padding = new Padding(8) };
         logGroup.Controls.Add(_log);
         main.Controls.Add(logGroup);
 
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Margin = new Padding(0, 8, 0, 0) };
-        var openLog = new Button { Text = "開啟 Log 檔", AutoSize = true };
-        openLog.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{_logger.LogPath}\"") { UseShellExecute = true });
-        footer.Controls.Add(openLog);
-        var service = new LinkLabel { Text = "翻譯服務：繁化姬（商用需付費）zhconvert.org　", AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
+        var footer = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 8, 0, 0) };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var openLog = new Button { Text = "開啟 Log 檔", AutoSize = true, Anchor = AnchorStyles.Right, MinimumSize = new Size(0, 34), Margin = new Padding(0) };
+        openLog.Click += (_, _) =>
+        {
+            if (_logger.LogPath.Length == 0 || !File.Exists(_logger.LogPath))
+            {
+                MessageBox.Show(this, "無法建立磁碟 Log；請查看畫面上的操作記錄。", "Log 不可用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{_logger.LogPath}\"") { UseShellExecute = true });
+        };
+        footer.Controls.Add(openLog, 1, 0);
+        var service = new LinkLabel { Text = "翻譯服務：繁化姬（商用需付費）zhconvert.org　", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(0, 0, 8, 0) };
         service.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo("https://zhconvert.org/") { UseShellExecute = true });
-        footer.Controls.Add(service);
+        footer.Controls.Add(service, 0, 0);
         main.Controls.Add(footer);
         Controls.Add(main);
     }
@@ -128,9 +154,26 @@ internal sealed class MainForm : Form
         using var dialog = new FolderBrowserDialog { Description = "選擇遊戲安裝資料夾", InitialDirectory = _gameRoot, UseDescriptionForTitle = true };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         _gameRoot = Path.GetFullPath(dialog.SelectedPath);
+        _logger.Dispose();
         _logger = NewLogger(_gameRoot);
         _log.Clear();
+        TryPrepareStorage();
         DetectGame();
+    }
+
+    private void TryPrepareStorage()
+    {
+        try
+        {
+            PortableStorage.PrepareGameDirectory(_gameRoot);
+        }
+        catch (Exception error)
+        {
+            _logger.Write("工作資料遷移失敗，原有資料保持不變：" + error);
+            MessageBox.Show(this,
+                "舊版工作資料無法安全搬離遊戲資料夾。原有檔案未刪除；仍可檢視和管理現有 Patch，但重新翻譯可能會中止。\n\n" + error.Message,
+                "工作資料遷移失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void DetectGame()
@@ -198,7 +241,7 @@ internal sealed class MainForm : Form
             _logger.Write(mode == TranslationMode.NativeTraditional ? "開始翻譯：native zh-Hant" : "開始翻譯：compat（覆蓋簡中槽位）");
             var tools = ToolInstaller.Ensure(_gameRoot);
             _logger.Write("內置工具已解壓並驗證。");
-            var memoryPath = Path.Combine(_gameRoot, ".game-translate", "translation-memory", "zhconvert-taiwan.json");
+            var memoryPath = Path.Combine(PortableStorage.GameDirectory(_gameRoot), "translation-memory", "zhconvert-taiwan.json");
             var api = new TranslationMemoryApi(memoryPath, new ZhConvertClient());
             var workflow = new UnrealTranslationWorkflow(new ProcessRunner(), api, tools, _logger.Write);
             var result = await workflow.BuildAndInstallAsync(_detection, mode, _cancellation.Token);
@@ -216,7 +259,7 @@ internal sealed class MainForm : Form
         catch (Exception error)
         {
             _logger.Write("ERROR：" + error);
-            MessageBox.Show(this, error.Message + $"\n\n完整資料：{_logger.LogPath}", "翻譯失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, error.Message + (_logger.LogPath.Length > 0 ? $"\n\n完整資料：{_logger.LogPath}" : "\n\n請查看畫面上的操作記錄。"), "翻譯失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -237,8 +280,10 @@ internal sealed class MainForm : Form
             var culture = SimplifiedCultures.InstalledTargetCulture(_detection.GameRoot);
             var result = PortableModeManager.DisableAndReset(_detection, localAppData, culture);
             foreach (var path in result.DisabledPatches) _logger.Write("已停用 patch：" + path);
+            if (result.StorageWarning is not null) _logger.Write("工作資料未能遷移，安裝狀態未更新：" + result.StorageWarning);
             if (result.ConfigPath is not null) _logger.Write($"玩家語言設定已還原到 {culture}：" + result.ConfigPath);
-            MessageBox.Show(this, $"已停用 {result.DisabledPatches.Count} 個翻譯 patch，玩家語言設定已還原到 {culture}。", "還原完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"已停用 {result.DisabledPatches.Count} 個翻譯 patch，玩家語言設定已還原到 {culture}。" +
+                (result.StorageWarning is null ? "" : "\n\n工作資料未能遷移，舊資料保持原狀；安裝狀態紀錄未更新。"), "還原完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DetectGame();
         }
         catch (Exception error)
@@ -278,14 +323,36 @@ internal sealed class MainForm : Form
             var culture = SimplifiedCultures.InstalledTargetCulture(_detection.GameRoot);
             var result = PortableModeManager.DeleteAndReset(_detection, localAppData, culture);
             foreach (var path in result.DeletedPaths) _logger.Write("已刪除 patch 檔案：" + path);
+            if (result.StorageWarning is not null) _logger.Write("工作資料未能遷移，安裝狀態未更新：" + result.StorageWarning);
             if (result.ConfigPath is not null) _logger.Write($"玩家語言設定已還原到 {culture}：" + result.ConfigPath);
-            MessageBox.Show(this, $"已刪除 {result.DeletedPaths.Count} 個 Game Translate patch 檔案，玩家語言設定已還原到 {culture}。", "刪除完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"已刪除 {result.DeletedPaths.Count} 個 Game Translate patch 檔案，玩家語言設定已還原到 {culture}。" +
+                (result.StorageWarning is null ? "" : "\n\n工作資料未能遷移，舊資料保持原狀；安裝狀態紀錄未更新。"), "刪除完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
             DetectGame();
         }
         catch (Exception error)
         {
             _logger.Write("刪除 ERROR：" + error);
             MessageBox.Show(this, error.Message, "刪除失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ClearCache()
+    {
+        if (MessageBox.Show(this,
+            "只會清除目前遊戲可重建的工作檔、輸出、舊工具快取與舊 Log；這些檔案將被永久刪除。\n\n" +
+            "翻譯記憶、安裝記錄、目前 Log、共用工具，以及遊戲內已安裝的 Patch 均會保留。繼續？",
+            "清除快取", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        try
+        {
+            var result = PortableCacheCleaner.ClearGameCache(_gameRoot, _logger.LogPath);
+            _logger.Write($"已清除目前遊戲快取：{result.RemovedFiles} 個檔案，{result.ReclaimedBytes:N0} bytes；翻譯記憶與安裝記錄已保留。");
+            MessageBox.Show(this, $"已清除 {result.RemovedFiles} 個可重建檔案（{result.ReclaimedBytes:N0} bytes）。\n翻譯記憶、安裝記錄及已安裝 Patch 保持不變。",
+                "清除完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception error)
+        {
+            _logger.Write("清除快取 ERROR：" + error);
+            MessageBox.Show(this, error.Message, "清除失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -300,6 +367,7 @@ internal sealed class MainForm : Form
         }
         _restore.Enabled = ui?.CanToggle == true;
         _delete.Enabled = ui?.CanDelete == true;
+        _clearCache.Enabled = !busy;
         _mode.Enabled = !busy;
         _cancel.Enabled = busy;
         UseWaitCursor = busy;
